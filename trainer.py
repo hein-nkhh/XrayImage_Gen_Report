@@ -124,7 +124,7 @@ def train_model(config=Config):
     
     # Initialize model components
     vision_encoder = DualViewEncoder(config=config)
-    vision_encoder = adjust_encoder_channels(vision_encoder, in_chans=6)
+    # vision_encoder = adjust_encoder_channels(vision_encoder, in_chans=6)
     
     text_decoder = TextDecoder(model_name=config.text_decoder_model)
     cross_attention = EnhancedCrossAttention(hidden_dim=config.cross_attn_dim, num_heads=config.cross_attn_heads)
