@@ -55,7 +55,7 @@ def train_epoch(model, dataloader, optimizer, scheduler, device):
         reports = batch['report']
         
         # Forward pass
-        outputs = model(front=front, lateral=lateral, text=reports)
+        outputs = model(front_images=front, lateral_images=lateral, text=reports)
         loss = outputs.loss
         
         # Backward pass
@@ -78,16 +78,19 @@ def evaluate(model, dataloader, device):
     all_refs = []
     
     with torch.no_grad():
-        for images, reports in tqdm(dataloader, desc="Evaluating"):
+        for batch in tqdm(dataloader, desc="Evaluating"):
             images = images.to(device)
+            front = batch['front'].to(device)
+            lateral = batch['lateral'].to(device)
+            reports = batch['report']
             
             # Get loss
-            outputs = model(images, reports)
+            outputs = model(front_images=front, lateral_images=lateral, text=reports)
             loss = outputs.loss
             total_loss += loss.item()
             
             # Generate predictions
-            preds = model.generate_report(images)
+            preds = model.generate_report(front_images = front, lateral_images = lateral)
             
             all_preds.extend(preds)
             all_refs.extend(reports)
