@@ -79,7 +79,7 @@ def evaluate(model, dataloader, device):
     
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Evaluating"):
-            images = images.to(device)
+            # images = images.to(device)
             front = batch['front'].to(device)
             lateral = batch['lateral'].to(device)
             reports = batch['report']
