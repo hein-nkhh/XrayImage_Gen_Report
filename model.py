@@ -83,19 +83,40 @@ class TextDecoder(nn.Module):
         )
 
     def generate(self, input_ids=None, attention_mask=None, inputs_embeds=None,
-                 max_length=150, **kwargs):
+             max_length=150, max_new_tokens=None, **kwargs):
         """Generate text from inputs"""
         if inputs_embeds is None and input_ids is None:
             raise ValueError("Either inputs_embeds or input_ids must be provided")
 
         with torch.no_grad():
-            output_ids = self.model.generate(
-                input_ids=input_ids,
-                attention_mask=attention_mask,
-                inputs_embeds=inputs_embeds,
-                max_length=max_length,
-                **kwargs
-            )
+            # When using inputs_embeds, we need to make sure max_new_tokens is set properly
+            if inputs_embeds is not None and input_ids is None:
+                # Use max_new_tokens instead of max_length when using inputs_embeds
+                if max_new_tokens is None:
+                    max_new_tokens = max_length
+
+                # Create a dummy input_ids tensor to help with generation
+                batch_size = inputs_embeds.size(0)
+                bos_token_id = self.tokenizer.bos_token_id if self.tokenizer.bos_token_id else self.tokenizer.eos_token_id
+                input_ids = torch.tensor([[bos_token_id]] * batch_size, device=inputs_embeds.device)
+                
+                # For inputs_embeds case, we'll use max_new_tokens instead of max_length
+                output_ids = self.model.generate(
+                    inputs_embeds=inputs_embeds,
+                    attention_mask=attention_mask,
+                    max_new_tokens=max_new_tokens,
+                    **kwargs
+                )
+            else:
+                # For input_ids case, we can use max_length as originally intended
+                output_ids = self.model.generate(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    inputs_embeds=inputs_embeds,
+                    max_length=max_length,
+                    **kwargs
+                )
+                
             return self.tokenizer.batch_decode(output_ids, skip_special_tokens=True)
 
 class XrayReportModel(nn.Module):
@@ -146,7 +167,7 @@ class XrayReportModel(nn.Module):
             # For inference, use generate() instead
             pass
         
-    def generate_report(self, images, prompt_text=None, max_length=150, **kwargs):
+    def generate_report(self, images, prompt_text=None, max_length=150, max_new_tokens=None, **kwargs):
         """
         Generate report from X-ray images
         
@@ -154,6 +175,7 @@ class XrayReportModel(nn.Module):
             images: Image tensor of shape (B, C, H, W)
             prompt_text: Optional prompt text to start generation
             max_length: Maximum length of generated text
+            max_new_tokens: Maximum number of new tokens to generate (alternative to max_length)
             
         Returns:
             List of generated reports
@@ -186,5 +208,6 @@ class XrayReportModel(nn.Module):
             inputs_embeds=fused,
             attention_mask=attention_mask,
             max_length=max_length,
+            max_new_tokens=max_new_tokens,
             **kwargs
         )
