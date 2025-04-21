@@ -238,11 +238,15 @@ class XrayReportModel(nn.Module):
         text_embeds = self.text_decoder.get_input_embeddings()(input_ids)
         text_embeds = text_embeds + self.pos_encoder(text_embeds)
         
-        fused = self.layer_norm(text_embeds + vision_embeds)  # Residual connection
+        fused = torch.cat([vision_embeds, text_embeds], dim=1)
+        fused = self.layer_norm(fused)   
+            
+        vision_mask = torch.ones((attention_mask.size(0), vision_embeds.size(1)), dtype=attention_mask.dtype, device=device)
+        full_attention_mask = torch.cat([vision_mask, attention_mask], dim=1)
         
         return self.text_decoder(
             inputs_embeds=fused,
-            attention_mask=attention_mask,
+            attention_mask=full_attention_mask,
             labels=labels if labels is not None else input_ids
         )
 
@@ -264,11 +268,15 @@ class XrayReportModel(nn.Module):
         text_embeds = self.text_decoder.get_input_embeddings()(input_ids)
         text_embeds = text_embeds + self.pos_encoder(text_embeds)
 
-        fused = self.layer_norm(text_embeds + vision_embeds)
+        fused = torch.cat([vision_embeds, text_embeds], dim=1)
+        fused = self.layer_norm(fused)
 
+        vision_mask = torch.ones((attention_mask.size(0), vision_embeds.size(1)), dtype=attention_mask.dtype, device=device)
+        full_attention_mask = torch.cat([vision_mask, attention_mask], dim=1)
+        
         gen_kwargs = {
             'inputs_embeds': fused,
-            'attention_mask': attention_mask,
+            'attention_mask': full_attention_mask,
             'max_length': self.config.max_gen_length,
             'num_beams': self.config.num_beams,
             'repetition_penalty': self.config.repetition_penalty,
