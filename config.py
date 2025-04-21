@@ -14,6 +14,8 @@ class Config:
     lr = 3e-5
     warmup_steps = 500
     max_len = 153
+    dropout_rate = 0.1
+    gradient_accumulation_steps = 1
     
     # Model saving
     output_dir = '/kaggle/working/checkpoints'
