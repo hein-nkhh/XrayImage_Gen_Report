@@ -35,7 +35,7 @@ class DualViewEncoder(nn.Module):
                                         config.vision_output_dim)
         
         # Cross-view attention
-        self.cross_attn = CrossAttention(hidden_dim=config.cross_attn_dim,
+        self.cross_attn = EnhancedCrossAttention(hidden_dim=config.cross_attn_dim,
                                     num_heads=config.cross_attn_heads)
     
     def forward(self, front, lateral):
@@ -181,7 +181,7 @@ class XrayReportModel(nn.Module):
         self.vision_proj = nn.Sequential(
             nn.Linear(vision_encoder.output_dim, text_decoder.model.config.hidden_size),
             nn.GELU(),
-            nn.Layer(text_decoder.model.config.hidden_size)
+            nn.LayerNorm(text_decoder.model.config.hidden_size)
         )
         
         # Positional encoding

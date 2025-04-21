@@ -8,7 +8,7 @@ from torch.optim import AdamW
 from transformers import get_linear_schedule_with_warmup
 
 from config import Config
-from model import VisionEncoder, TextDecoder, CrossAttention, XrayReportModel
+from model import DualViewEncoder, TextDecoder, EnhancedCrossAttention, XrayReportModel
 from dataset import XrayReportDataset
 from utils import collate_fn
 from metrics import calculate_metrics
@@ -116,11 +116,11 @@ def train_model(config=Config):
     val_loader = DataLoader(val_ds, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
     
     # Initialize model components
-    vision_encoder = VisionEncoder(model_name=config.vision_encoder_name, output_dim=config.vision_output_dim)
+    vision_encoder = DualViewEncoder(model_name=config.vision_encoder_name, output_dim=config.vision_output_dim)
     vision_encoder = adjust_encoder_channels(vision_encoder, in_chans=6)
     
     text_decoder = TextDecoder(model_name=config.text_decoder_model)
-    cross_attention = CrossAttention(hidden_dim=config.cross_attn_dim, num_heads=config.cross_attn_heads)
+    cross_attention = EnhancedCrossAttention(hidden_dim=config.cross_attn_dim, num_heads=config.cross_attn_heads)
     
     # Create full model
     model = XrayReportModel(vision_encoder, text_decoder, cross_attention).to(device)
