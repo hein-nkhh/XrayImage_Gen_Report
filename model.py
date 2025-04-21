@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from timm import create_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
-
+import math
 class ProjectionHead(nn.Module):
     def __init__(self, input_dim, output_dim, dropout=0.1):
         super().__init__()
