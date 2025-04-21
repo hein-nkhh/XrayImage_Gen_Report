@@ -126,6 +126,9 @@ def train_model(config=Config):
     
     # Training loop
     best_bleu4 = -1.0
+    patience = 3 
+    patience_counter = 0 
+
     print(f"Starting training for {config.epochs} epochs...")
     
     for epoch in range(1, config.epochs + 1):
@@ -148,11 +151,20 @@ def train_model(config=Config):
         ckpt_path = os.path.join(config.output_dir, f"checkpoint_epoch{epoch}.pt")
         torch.save(model.state_dict(), ckpt_path)
         
+        
         # Save best model
         if val_metrics["bleu4"] > best_bleu4:
             best_bleu4 = val_metrics["bleu4"]
             torch.save(model.state_dict(), config.best_model_path)
             print(f"  New best model saved! BLEU-4: {best_bleu4:.4f}")
+            patience_counter = 0  # Reset bộ đếm
+        else:
+            patience_counter += 1
+            print(f"  No improvement for {patience_counter} epochs. (Patience: {patience})")
+        
+        if patience_counter >= patience:
+            print(f"Early stopping triggered after {epoch} epochs!")
+            break
         
         # Clean up memory
         gc.collect()
