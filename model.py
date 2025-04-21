@@ -245,7 +245,7 @@ class XrayReportModel(nn.Module):
             value=vision_embeds,
             key_padding_mask=None
         )
-        fused = self.layer_norm(fused + text_embeds)  # Residual connection
+        fused = self.layer_norm(text_embeds + vision_embeds)  # Residual connection
         
         return self.text_decoder(
             inputs_embeds=fused,
@@ -254,40 +254,25 @@ class XrayReportModel(nn.Module):
         )
 
     def generate_report(self, front_images, lateral_images, prompt_text=None, **kwargs):
-        """
-        Enhanced generation with medical prompts
-        """
         device = front_images.device
         batch_size = front_images.shape[0]
-        
-        # Encode vision features
+
         vision_embeds = self.vision_encoder(front_images, lateral_images)
         vision_embeds = self.vision_proj(vision_embeds)
         vision_embeds = vision_embeds + self.pos_encoder(vision_embeds)
-        
-        # Create medical prompts
+
         if prompt_text is None:
             prompt_text = ["Findings: Impression:"] * batch_size
-            
-        # Encode prompts
+
         input_ids, attention_mask = self.text_decoder.encode_text(prompt_text)
         input_ids = input_ids.to(device)
         attention_mask = attention_mask.to(device)
-        
-        # Get prompt embeddings
+
         text_embeds = self.text_decoder.get_input_embeddings()(input_ids)
         text_embeds = text_embeds + self.pos_encoder(text_embeds)
-        
-        # Multimodal fusion
-        fused = self.cross_attention(
-            query=text_embeds,
-            key=vision_embeds,
-            value=vision_embeds,
-            key_padding_mask=None
-        )
-        fused = self.layer_norm(fused + text_embeds)  # Residual connection
-        
-        # Generation parameters
+
+        fused = self.layer_norm(text_embeds + vision_embeds)
+
         gen_kwargs = {
             'inputs_embeds': fused,
             'attention_mask': attention_mask,
@@ -299,6 +284,6 @@ class XrayReportModel(nn.Module):
             'pad_token_id': self.text_decoder.tokenizer.eos_token_id
         }
         gen_kwargs.update(kwargs)
-        
+
         generated_ids = self.text_decoder.model.generate(**gen_kwargs)
         return self.text_decoder.decode(generated_ids)
