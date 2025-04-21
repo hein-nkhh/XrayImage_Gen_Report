@@ -116,7 +116,7 @@ def train_model(config=Config):
     val_loader = DataLoader(val_ds, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
     
     # Initialize model components
-    vision_encoder = DualViewEncoder(model_name=config.vision_encoder_name, output_dim=config.vision_output_dim)
+    vision_encoder = DualViewEncoder(config=config)
     vision_encoder = adjust_encoder_channels(vision_encoder, in_chans=6)
     
     text_decoder = TextDecoder(model_name=config.text_decoder_model)
