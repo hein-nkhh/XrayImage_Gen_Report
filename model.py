@@ -16,28 +16,65 @@ class ProjectionHead(nn.Module):
     def forward(self, x):
         return self.projection(x)
 
-class VisionEncoder(nn.Module):
-    def __init__(self, model_name='swin_base_patch4_window7_224', output_dim=1024):
+class DualViewEncoder(nn.Module):
+    def __init__(self, config):
         super().__init__()
-        self.encoder = create_model(model_name, pretrained=True, num_classes=0, features_only=False)
-        self.projection = ProjectionHead(self.encoder.num_features, output_dim)
+        
+        # Base encoder cho từng view
+        self.front_encoder = create_model(config.vision_encoder_name, 
+                                        pretrained=True, 
+                                        num_classes=0)
+        self.lateral_encoder = create_model(config.vision_encoder_name, 
+                                        pretrained=True, 
+                                        num_classes=0)
+        
+        # Projection layers
+        self.front_proj = ProjectionHead(self.front_encoder.num_features, 
+                                        config.vision_output_dim)
+        self.lateral_proj = ProjectionHead(self.lateral_encoder.num_features,
+                                        config.vision_output_dim)
+        
+        # Cross-view attention
+        self.cross_attn = CrossAttention(hidden_dim=config.cross_attn_dim,
+                                    num_heads=config.cross_attn_heads)
+    
+    def forward(self, front, lateral):
+        # Encode features
+        front_feat = self.front_encoder.forward_features(front)
+        lateral_feat = self.lateral_encoder.forward_features(lateral)
+        
+        # Projection
+        front_proj = self.front_proj(front_feat)
+        lateral_proj = self.lateral_proj(lateral_feat)
+        
+        # Cross-view attention
+        fused_feat = self.cross_attn(front_proj, lateral_proj)
+        return fused_feat
 
-    def forward(self, images):
-        feats = self.encoder.forward_features(images)  # (B, H, W, C)
-        B, H, W, C = feats.shape
-        feats = feats.view(B, H*W, C)
-        return self.projection(feats)
-
-class CrossAttention(nn.Module):
-    def __init__(self, hidden_dim=1024, num_heads=8, dropout=0.1):
+class EnhancedCrossAttention(nn.Module):
+    def __init__(self, hidden_dim=1024, num_heads=8):
         super().__init__()
-        self.attn = nn.MultiheadAttention(embed_dim=hidden_dim, num_heads=num_heads,
-                                          dropout=dropout, batch_first=True)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, text_embeds, vision_embeds):
-        attended, _ = self.attn(query=text_embeds, key=vision_embeds, value=vision_embeds)
-        return self.dropout(attended + text_embeds)
+        self.front_attn = nn.MultiheadAttention(hidden_dim, num_heads)
+        self.lateral_attn = nn.MultiheadAttention(hidden_dim, num_heads)
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_dim, 4*hidden_dim),
+            nn.GELU(),
+            nn.Linear(4*hidden_dim, hidden_dim),
+            nn.Dropout(0.1)
+        )
+        self.norm = nn.LayerNorm(hidden_dim)
+        
+    def forward(self, front, lateral):
+        # Attention giữa các view
+        attn_front, _ = self.front_attn(front, lateral, lateral)
+        attn_lateral, _ = self.lateral_attn(lateral, front, front)
+        
+        # Kết hợp features
+        combined = torch.cat([attn_front, attn_lateral], dim=1)
+        
+        # Feed forward
+        fused = self.norm(combined + self.ffn(combined))
+        return fused
 
 class TextDecoder(nn.Module):
     def __init__(self, model_name='microsoft/biogpt'):
@@ -119,95 +156,142 @@ class TextDecoder(nn.Module):
                 
             return self.tokenizer.batch_decode(output_ids, skip_special_tokens=True)
 
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=5000):
+        super().__init__()
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer('pe', pe.unsqueeze(0))
+        
+    def forward(self, x):
+        return self.pe[:, :x.size(1)]
+
 class XrayReportModel(nn.Module):
-    def __init__(self, vision_encoder, text_decoder, cross_attention):
+    def __init__(self, vision_encoder, text_decoder, cross_attention, config):
         super().__init__()
         self.vision_encoder = vision_encoder
         self.text_decoder = text_decoder
         self.cross_attention = cross_attention
-    
-    def forward(self, images, text=None, labels=None):
+        self.config = config
+        
+        # Vision to text projection
+        self.vision_proj = nn.Sequential(
+            nn.Linear(vision_encoder.output_dim, text_decoder.model.config.hidden_size),
+            nn.GELU(),
+            nn.Layer(text_decoder.model.config.hidden_size)
+        )
+        
+        # Positional encoding
+        self.pos_encoder = PositionalEncoding(text_decoder.model.config.hidden_size)
+        
+        # Regularization
+        self.dropout = nn.Dropout(config.dropout_rate)
+        self.layer_norm = nn.LayerNorm(text_decoder.model.config.hidden_size)
+        
+        # Initialize weights
+        self._init_weights()
+
+    def _init_weights(self):
+        for module in self.modules():
+            if isinstance(module, nn.Linear):
+                nn.init.xavier_normal_(module.weight)
+                if module.bias is not None:
+                    nn.init.constant_(module.bias, 0)
+            elif isinstance(module, nn.LayerNorm):
+                nn.init.constant_(module.weight, 1)
+                nn.init.constant_(module.bias, 0)
+
+    def forward(self, front_images, lateral_images, text=None, labels=None):
         """
-        Forward pass for training
-        
-        Args:
-            images: Image tensor of shape (B, C, H, W)
-            text: List of report texts (for training)
-            labels: Optional labels for computing loss
-            
-        Returns:
-            Output from text decoder
+        Enhanced forward pass with dual-view processing
         """
-        device = images.device
+        device = front_images.device
         
-        # Get vision embeddings
-        vision_embeds = self.vision_encoder(images)
+        # Encode vision features
+        vision_embeds = self.vision_encoder(front_images, lateral_images)
+        vision_embeds = self.vision_proj(vision_embeds)
         
-        if text is not None:
-            # Training mode
-            input_ids, attention_mask = self.text_decoder.encode_text(text)
-            input_ids = input_ids.to(device)
-            attention_mask = attention_mask.to(device)
+        # Add positional encoding
+        vision_embeds = vision_embeds + self.pos_encoder(vision_embeds)
+        vision_embeds = self.layer_norm(vision_embeds)
+        vision_embeds = self.dropout(vision_embeds)
+
+        if text is None:
+            raise ValueError("Text input is required for training mode")
             
-            # Get text embeddings
-            text_embeds = self.text_decoder.get_input_embeddings()(input_ids)
-            
-            # Combine with vision features via cross-attention
-            fused = self.cross_attention(text_embeds, vision_embeds)
-            
-            # Forward pass through text decoder
-            return self.text_decoder(
-                inputs_embeds=fused,
-                attention_mask=attention_mask,
-                labels=labels if labels is not None else input_ids
-            )
+        # Process text inputs
+        input_ids, attention_mask = self.text_decoder.encode_text(text)
+        input_ids = input_ids.to(device)
+        attention_mask = attention_mask.to(device)
         
-        else:
-            # This branch should not be used in training
-            # For inference, use generate() instead
-            pass
+        # Get text embeddings
+        text_embeds = self.text_decoder.get_input_embeddings()(input_ids)
+        text_embeds = text_embeds + self.pos_encoder(text_embeds)
         
-    def generate_report(self, images, prompt_text=None, max_length=150, max_new_tokens=None, **kwargs):
+        # Multimodal fusion
+        fused = self.cross_attention(
+            query=text_embeds,
+            key=vision_embeds,
+            value=vision_embeds,
+            key_padding_mask=None
+        )
+        fused = self.layer_norm(fused + text_embeds)  # Residual connection
+        
+        return self.text_decoder(
+            inputs_embeds=fused,
+            attention_mask=attention_mask,
+            labels=labels if labels is not None else input_ids
+        )
+
+    def generate_report(self, front_images, lateral_images, prompt_text=None, **kwargs):
         """
-        Generate report from X-ray images
-        
-        Args:
-            images: Image tensor of shape (B, C, H, W)
-            prompt_text: Optional prompt text to start generation
-            max_length: Maximum length of generated text
-            max_new_tokens: Maximum number of new tokens to generate (alternative to max_length)
-            
-        Returns:
-            List of generated reports
+        Enhanced generation with medical prompts
         """
-        device = images.device
-        batch_size = images.shape[0]
+        device = front_images.device
+        batch_size = front_images.shape[0]
         
-        # Get vision embeddings
-        vision_embeds = self.vision_encoder(images)
+        # Encode vision features
+        vision_embeds = self.vision_encoder(front_images, lateral_images)
+        vision_embeds = self.vision_proj(vision_embeds)
+        vision_embeds = vision_embeds + self.pos_encoder(vision_embeds)
         
-        # Create initial prompt if not provided
+        # Create medical prompts
         if prompt_text is None:
-            prompt_text = [""] * batch_size
-        elif isinstance(prompt_text, str):
-            prompt_text = [prompt_text] * batch_size
+            prompt_text = ["Findings: Impression:"] * batch_size
             
-        # Encode prompt text
+        # Encode prompts
         input_ids, attention_mask = self.text_decoder.encode_text(prompt_text)
         input_ids = input_ids.to(device)
         attention_mask = attention_mask.to(device)
         
-        # Get text embeddings from the prompt
+        # Get prompt embeddings
         text_embeds = self.text_decoder.get_input_embeddings()(input_ids)
+        text_embeds = text_embeds + self.pos_encoder(text_embeds)
         
-        # Combine with vision features via cross-attention
-        fused = self.cross_attention(text_embeds, vision_embeds)
-        
-        # Generate text with fused embeddings
-        return self.text_decoder.generate(
-            inputs_embeds=fused,
-            attention_mask=attention_mask,
-            max_length=max_length,
-            max_new_tokens=max_new_tokens,
-            **kwargs
+        # Multimodal fusion
+        fused = self.cross_attention(
+            query=text_embeds,
+            key=vision_embeds,
+            value=vision_embeds,
+            key_padding_mask=None
         )
+        fused = self.layer_norm(fused + text_embeds)  # Residual connection
+        
+        # Generation parameters
+        gen_kwargs = {
+            'inputs_embeds': fused,
+            'attention_mask': attention_mask,
+            'max_length': self.config.max_gen_length,
+            'num_beams': self.config.num_beams,
+            'repetition_penalty': self.config.repetition_penalty,
+            'length_penalty': self.config.length_penalty,
+            'early_stopping': True,
+            'pad_token_id': self.text_decoder.tokenizer.eos_token_id
+        }
+        gen_kwargs.update(kwargs)
+        
+        generated_ids = self.text_decoder.model.generate(**gen_kwargs)
+        return self.text_decoder.decode(generated_ids)

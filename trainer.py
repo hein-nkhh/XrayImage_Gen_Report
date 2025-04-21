@@ -45,16 +45,19 @@ def train_epoch(model, dataloader, optimizer, scheduler, device):
     total_loss = 0
     
     progress_bar = tqdm(dataloader, desc="Training")
-    for images, reports in progress_bar:
-        images = images.to(device)
+    for batch  in progress_bar:
+        front = batch['front'].to(device)
+        lateral = batch['lateral'].to(device)
+        reports = batch['report']
         
         # Forward pass
-        outputs = model(images, reports)
+        outputs = model(front=front, lateral=lateral, text=reports)
         loss = outputs.loss
         
         # Backward pass
         optimizer.zero_grad()
         loss.backward()
+        nn.utils.clip_grad_norm_(model.parameters(), 1.0)  # Gradient clipping
         optimizer.step()
         scheduler.step()
         
@@ -104,9 +107,10 @@ def train_model(config=Config):
     device = torch.device(config.device)
     
     # Create datasets and dataloaders
-    transform = XrayReportDataset.get_transform()
-    train_ds = XrayReportDataset(config.train_csv, config.image_dir, transform=transform, max_length=config.max_len)
-    val_ds = XrayReportDataset(config.cv_csv, config.image_dir, transform=transform, max_length=config.max_len)
+    transform_front = XrayReportDataset.get_transform_front()
+    transform_lateral = XrayReportDataset.get_transform_lateral()
+    train_ds = XrayReportDataset(config.train_csv, config.image_dir, transform_front=transform_front, transform_lateral = transform_lateral, max_length=config.max_len)
+    val_ds = XrayReportDataset(config.cv_csv, config.image_dir, transform_front=transform_front, transform_lateral = transform_lateral, max_length=config.max_len)
     
     train_loader = DataLoader(train_ds, batch_size=config.batch_size, shuffle=True, collate_fn=collate_fn)
     val_loader = DataLoader(val_ds, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
@@ -122,7 +126,7 @@ def train_model(config=Config):
     model = XrayReportModel(vision_encoder, text_decoder, cross_attention).to(device)
     
     # Setup optimizer and scheduler
-    optimizer = AdamW(model.parameters(), lr=config.lr)
+    optimizer = AdamW(model.parameters(), lr=config.lr, weight_decay=0.01)
     total_steps = len(train_loader) * config.epochs
     scheduler = get_linear_schedule_with_warmup(
         optimizer, 
