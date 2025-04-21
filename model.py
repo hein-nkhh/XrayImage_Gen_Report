@@ -146,6 +146,7 @@ class TextDecoder(nn.Module):
                 
                 # For inputs_embeds case, we'll use max_new_tokens instead of max_length
                 output_ids = self.model.generate(
+                    input_ids=input_ids,
                     inputs_embeds=inputs_embeds,
                     attention_mask=attention_mask,
                     max_new_tokens=max_new_tokens,
@@ -269,6 +270,7 @@ class XrayReportModel(nn.Module):
         full_attention_mask = torch.cat([vision_mask, attention_mask], dim=1)
 
         gen_kwargs = {
+            'input_ids': input_ids,
             'inputs_embeds': fused,
             'attention_mask': full_attention_mask,
             'max_new_tokens': self.config.max_gen_length,
@@ -281,4 +283,8 @@ class XrayReportModel(nn.Module):
         gen_kwargs.update(kwargs)
 
         generated_ids = self.text_decoder.model.generate(**gen_kwargs)
+        
+        print("Generated IDs:", generated_ids)
+        print("Decoded output:", self.text_decoder.decode(generated_ids))
+
         return self.text_decoder.decode(generated_ids)
