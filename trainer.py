@@ -143,7 +143,7 @@ def train_model(config=Config):
     
     # Training loop
     best_bleu4 = -1.0
-    patience = 3 
+    patience = 10 
     patience_counter = 0 
 
     print(f"Starting training for {config.epochs} epochs...")
