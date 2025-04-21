@@ -13,31 +13,35 @@ from dataset import XrayReportDataset
 from utils import collate_fn
 from metrics import calculate_metrics
 
-def adjust_encoder_channels(vision_encoder, in_chans=6):
+def adjust_encoder_channels(dual_encoder, in_chans=6):
     """
-    Adjust the encoder's first conv layer to accept 6 channels (2 X-ray images)
+    Adjust both front and lateral encoders to accept in_chans input
     """
-    orig_proj = vision_encoder.encoder.patch_embed.proj
-    new_proj = nn.Conv2d(
-        in_channels=in_chans,
-        out_channels=orig_proj.out_channels,
-        kernel_size=orig_proj.kernel_size,
-        stride=orig_proj.stride,
-        padding=orig_proj.padding,
-        bias=(orig_proj.bias is not None)
-    )
-    
-    # Initialize new conv layer with weights from original
-    with torch.no_grad():
-        # Copy weights for first 3 channels
-        new_proj.weight[:, :3, :, :].copy_(orig_proj.weight)
-        # Copy weights again for the next 3 channels
-        new_proj.weight[:, 3:, :, :].copy_(orig_proj.weight)
-        if orig_proj.bias is not None:
-            new_proj.bias.copy_(orig_proj.bias)
-            
-    vision_encoder.encoder.patch_embed.proj = new_proj
-    return vision_encoder
+    def adjust_single_encoder(encoder):
+        orig_proj = encoder.patch_embed.proj
+        new_proj = nn.Conv2d(
+            in_channels=in_chans,
+            out_channels=orig_proj.out_channels,
+            kernel_size=orig_proj.kernel_size,
+            stride=orig_proj.stride,
+            padding=orig_proj.padding,
+            bias=(orig_proj.bias is not None)
+        )
+
+        with torch.no_grad():
+            # Copy weights for first 3 channels
+            new_proj.weight[:, :3, :, :].copy_(orig_proj.weight)
+            # Copy weights again for the next 3 channels
+            new_proj.weight[:, 3:, :, :].copy_(orig_proj.weight)
+            if orig_proj.bias is not None:
+                new_proj.bias.copy_(orig_proj.bias)
+
+        encoder.patch_embed.proj = new_proj
+
+    # Adjust both encoders
+    adjust_single_encoder(dual_encoder.front_encoder)
+    adjust_single_encoder(dual_encoder.lateral_encoder)
+    return dual_encoder
 
 def train_epoch(model, dataloader, optimizer, scheduler, device):
     """Train for one epoch"""
