@@ -85,6 +85,12 @@ def evaluate(model, dataloader, device):
             all_preds.extend(preds)
             all_refs.extend(reports)
     
+    print("\nSamples (Prediction | Reference):")
+    for i in range(min(3, len(all_preds))):
+        print(f"Pred: {all_preds[i][:100]}...")
+        print(f"Ref:  {all_refs[i][:100]}...")
+        print("---")
+        
     # Calculate evaluation metrics
     metrics = calculate_metrics(all_preds, all_refs)
     metrics["loss"] = total_loss / len(dataloader)
