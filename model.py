@@ -37,6 +37,8 @@ class DualViewEncoder(nn.Module):
         # Cross-view attention
         self.cross_attn = EnhancedCrossAttention(hidden_dim=config.cross_attn_dim,
                                     num_heads=config.cross_attn_heads)
+        
+        self.output_dim = 2 * config.cross_attn_dim
     
     def forward(self, front, lateral):
         # Encode features
