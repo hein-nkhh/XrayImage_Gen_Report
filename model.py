@@ -284,7 +284,7 @@ class XrayReportModel(nn.Module):
 
         generated_ids = self.text_decoder.model.generate(**gen_kwargs)
         
-        print("Generated IDs:", generated_ids)
-        print("Decoded output:", self.text_decoder.decode(generated_ids))
+        # print("Generated IDs:", generated_ids)
+        # print("Decoded output:", self.text_decoder.decode(generated_ids))
 
         return self.text_decoder.decode(generated_ids)
