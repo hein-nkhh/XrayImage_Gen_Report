@@ -183,22 +183,17 @@ class XrayReportModel(nn.Module):
         self.text_decoder = text_decoder
         self.cross_attention = cross_attention
         self.config = config
-        
-        # Vision to text projection
+
         self.vision_proj = nn.Sequential(
             nn.Linear(vision_encoder.output_dim, text_decoder.model.config.hidden_size),
             nn.GELU(),
             nn.LayerNorm(text_decoder.model.config.hidden_size)
         )
-        
-        # Positional encoding
+
         self.pos_encoder = PositionalEncoding(text_decoder.model.config.hidden_size)
-        
-        # Regularization
         self.dropout = nn.Dropout(config.dropout_rate)
         self.layer_norm = nn.LayerNorm(text_decoder.model.config.hidden_size)
-        
-        # Initialize weights
+
         self._init_weights()
 
     def _init_weights(self):
@@ -212,42 +207,41 @@ class XrayReportModel(nn.Module):
                 nn.init.constant_(module.bias, 0)
 
     def forward(self, front_images, lateral_images, text=None, labels=None):
-        """
-        Enhanced forward pass with dual-view processing
-        """
         device = front_images.device
-        
-        # Encode vision features
+
         vision_embeds = self.vision_encoder(front_images, lateral_images)
         vision_embeds = self.vision_proj(vision_embeds)
-        
-        # Add positional encoding
         vision_embeds = vision_embeds + self.pos_encoder(vision_embeds)
         vision_embeds = self.layer_norm(vision_embeds)
         vision_embeds = self.dropout(vision_embeds)
 
         if text is None:
             raise ValueError("Text input is required for training mode")
-            
-        # Process text inputs
+
         input_ids, attention_mask = self.text_decoder.encode_text(text)
         input_ids = input_ids.to(device)
         attention_mask = attention_mask.to(device)
-        
-        # Get text embeddings
+
         text_embeds = self.text_decoder.get_input_embeddings()(input_ids)
         text_embeds = text_embeds + self.pos_encoder(text_embeds)
-        
+
         fused = torch.cat([vision_embeds, text_embeds], dim=1)
-        fused = self.layer_norm(fused)   
-            
+        fused = self.layer_norm(fused)
+
         vision_mask = torch.ones((attention_mask.size(0), vision_embeds.size(1)), dtype=attention_mask.dtype, device=device)
         full_attention_mask = torch.cat([vision_mask, attention_mask], dim=1)
-        
+
+        # Fix: Pad labels with -100 to match fused sequence length
+        if labels is None:
+            labels = input_ids
+
+        vision_pad = torch.full((labels.size(0), vision_embeds.size(1)), -100, dtype=labels.dtype, device=labels.device)
+        padded_labels = torch.cat([vision_pad, labels], dim=1)
+
         return self.text_decoder(
             inputs_embeds=fused,
             attention_mask=full_attention_mask,
-            labels=labels if labels is not None else input_ids
+            labels=padded_labels
         )
 
     def generate_report(self, front_images, lateral_images, prompt_text=None, **kwargs):
@@ -273,7 +267,7 @@ class XrayReportModel(nn.Module):
 
         vision_mask = torch.ones((attention_mask.size(0), vision_embeds.size(1)), dtype=attention_mask.dtype, device=device)
         full_attention_mask = torch.cat([vision_mask, attention_mask], dim=1)
-        
+
         gen_kwargs = {
             'inputs_embeds': fused,
             'attention_mask': full_attention_mask,
