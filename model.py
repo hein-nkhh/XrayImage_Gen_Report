@@ -45,6 +45,10 @@ class DualViewEncoder(nn.Module):
         front_feat = self.front_encoder.forward_features(front)
         lateral_feat = self.lateral_encoder.forward_features(lateral)
         
+        # Flatten spatial dims
+        front_feat = front_feat.view(front_feat.size(0), -1, front_feat.size(-1))   # [B, N, C]
+        lateral_feat = lateral_feat.view(lateral_feat.size(0), -1, lateral_feat.size(-1))
+        
         # Projection
         front_proj = self.front_proj(front_feat)
         lateral_proj = self.lateral_proj(lateral_feat)
@@ -56,15 +60,16 @@ class DualViewEncoder(nn.Module):
 class EnhancedCrossAttention(nn.Module):
     def __init__(self, hidden_dim=1024, num_heads=8):
         super().__init__()
-        self.front_attn = nn.MultiheadAttention(hidden_dim, num_heads)
-        self.lateral_attn = nn.MultiheadAttention(hidden_dim, num_heads)
+        self.front_attn = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
+        self.lateral_attn = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
+
         self.ffn = nn.Sequential(
-            nn.Linear(hidden_dim, 4*hidden_dim),
+            nn.Linear(hidden_dim*2, 4*hidden_dim*2),
             nn.GELU(),
-            nn.Linear(4*hidden_dim, hidden_dim),
+            nn.Linear(4*hidden_dim*2, hidden_dim*2),
             nn.Dropout(0.1)
         )
-        self.norm = nn.LayerNorm(hidden_dim)
+        self.norm = nn.LayerNorm(hidden_dim*2)
         
     def forward(self, front, lateral):
         # Attention giữa các view
@@ -72,7 +77,7 @@ class EnhancedCrossAttention(nn.Module):
         attn_lateral, _ = self.lateral_attn(lateral, front, front)
         
         # Kết hợp features
-        combined = torch.cat([attn_front, attn_lateral], dim=1)
+        combined = torch.cat([attn_front, attn_lateral], dim=-1)
         
         # Feed forward
         fused = self.norm(combined + self.ffn(combined))
