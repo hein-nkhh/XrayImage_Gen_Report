@@ -271,7 +271,7 @@ class XrayReportModel(nn.Module):
         gen_kwargs = {
             'inputs_embeds': fused,
             'attention_mask': full_attention_mask,
-            'max_length': self.config.max_gen_length,
+            'max_new_tokens': self.config.max_gen_length,
             'num_beams': self.config.num_beams,
             'repetition_penalty': self.config.repetition_penalty,
             'length_penalty': self.config.length_penalty,
