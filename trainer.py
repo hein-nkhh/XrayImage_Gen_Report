@@ -127,7 +127,7 @@ def train_model(config=Config):
     cross_attention = EnhancedCrossAttention(hidden_dim=config.cross_attn_dim, num_heads=config.cross_attn_heads)
     
     # Create full model
-    model = XrayReportModel(vision_encoder, text_decoder, cross_attention).to(device)
+    model = XrayReportModel(vision_encoder, text_decoder, cross_attention, config).to(device)
     
     # Setup optimizer and scheduler
     optimizer = AdamW(model.parameters(), lr=config.lr, weight_decay=0.01)
