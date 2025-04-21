@@ -238,13 +238,6 @@ class XrayReportModel(nn.Module):
         text_embeds = self.text_decoder.get_input_embeddings()(input_ids)
         text_embeds = text_embeds + self.pos_encoder(text_embeds)
         
-        # Multimodal fusion
-        fused = self.cross_attention(
-            query=text_embeds,
-            key=vision_embeds,
-            value=vision_embeds,
-            key_padding_mask=None
-        )
         fused = self.layer_norm(text_embeds + vision_embeds)  # Residual connection
         
         return self.text_decoder(
