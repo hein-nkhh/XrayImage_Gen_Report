@@ -106,3 +106,38 @@ class XrayReportModel(nn.Module):
 
         outputs = self.biogpt.model(inputs_embeds=text_embeds, attention_mask=attention_mask, labels=labels)
         return outputs
+    
+    def generate(self, front, lateral, max_length=150):
+        vision_embeds = self.vision_encoder(front, lateral)
+        vision_embeds = self.vision_proj(vision_embeds)
+
+        batch_size = front.size(0)
+        device = front.device
+        bos_token_id = self.biogpt.tokenizer.bos_token_id
+        eos_token_id = self.biogpt.tokenizer.eos_token_id
+
+        past = None
+        cur_input = torch.full((batch_size, 1), bos_token_id, dtype=torch.long, device=device)
+        generated = []
+
+        for _ in range(max_length):
+            embed = self.text_embed(cur_input).squeeze(1).unsqueeze(1)
+
+            for fusion_layer in self.fusion_layers:
+                embed = fusion_layer(embed, vision_embeds)
+
+            outputs = self.biogpt.model(inputs_embeds=embed, past_key_values=past, use_cache=True)
+            logits = outputs.logits
+            past = outputs.past_key_values
+
+            next_token = logits.argmax(dim=-1)[:, -1].unsqueeze(1)
+            generated.append(next_token)
+            cur_input = next_token
+
+            if (next_token == eos_token_id).all():
+                break
+
+        return torch.cat(generated, dim=1)
+
+    def decode(self, generated_ids):
+        return self.biogpt.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
