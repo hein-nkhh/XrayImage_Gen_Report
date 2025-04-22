@@ -19,7 +19,7 @@ train_dataset = XrayReportDataset(Config.train_csv, Config.image_dir,
                                    transform_front=XrayReportDataset.get_transform_front(),
                                    transform_lateral=XrayReportDataset.get_transform_lateral())
 
-val_dataset = XrayReportDataset(Config.cv_csv, Config.image_dir,
+val_dataset = XrayReportDataset(Config.test_csv, Config.image_dir,
                                  transform_front=XrayReportDataset.get_transform_front(),
                                  transform_lateral=XrayReportDataset.get_transform_lateral())
 

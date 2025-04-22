@@ -28,7 +28,11 @@ def compute_bleu_scores(references, predictions):
 
 def compute_meteor_score(references, predictions):
     meteor = Meteor()
-    return meteor.compute(predictions=predictions, references=references)['meteor']
+    scores = []
+    for ref, pred in zip(references, predictions):
+        score, _ = meteor.compute_score([ref], [pred])  # Sử dụng phương thức compute_score
+        scores.append(score)
+    return sum(scores) / len(scores)
 
 
 def compute_rouge_l_score(references, predictions):
@@ -49,7 +53,7 @@ def evaluate_all(preds, refs):
     }
     return results
 
-def evaluate_model(model, dataloader, device, num_examples=5):
+def evaluate_model(model, dataloader, device, num_examples=2):
     model.eval()
     predictions = []
     references = []
