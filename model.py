@@ -262,7 +262,7 @@ class XrayReportModel(nn.Module):
         bos_token_id = self.biogpt.tokenizer.bos_token_id
         eos_token_id = self.biogpt.tokenizer.eos_token_id
 
-        past = None
+        past = None  # Đảm bảo không có past_key_values từ các lần sinh trước
         cur_input = torch.full((batch_size, 1), bos_token_id, dtype=torch.long, device=device)
         generated = []
 
@@ -315,6 +315,7 @@ class XrayReportModel(nn.Module):
                 break
 
         return torch.cat(generated, dim=1)
+
 
 
     def decode(self, generated_ids):
