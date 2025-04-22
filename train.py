@@ -26,6 +26,9 @@ val_dataset = XrayReportDataset(Config.test_csv, Config.image_dir,
 train_loader = DataLoader(train_dataset, batch_size=Config.batch_size, shuffle=True)
 val_loader = DataLoader(val_dataset, batch_size=Config.batch_size, shuffle=False)
 
+if not os.path.exists(Config.output_dir):
+    os.makedirs(Config.output_dir)
+    
 # Model
 model = XrayReportModel(Config).to(Config.device)
 
