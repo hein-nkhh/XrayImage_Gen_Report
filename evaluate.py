@@ -1,4 +1,4 @@
-import evaluate
+from pycocoevalcap.meteor.meteor import Meteor
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from rouge_score import rouge_scorer
 import nltk
@@ -27,7 +27,7 @@ def compute_bleu_scores(references, predictions):
 
 
 def compute_meteor_score(references, predictions):
-    meteor = evaluate.load("meteor")
+    meteor = Meteor()
     return meteor.compute(predictions=predictions, references=references)['meteor']
 
 
@@ -49,7 +49,7 @@ def evaluate_all(preds, refs):
     }
     return results
 
-def evaluate_model(model, dataloader, device):
+def evaluate_model(model, dataloader, device, num_examples=5):
     model.eval()
     predictions = []
     references = []
@@ -63,6 +63,12 @@ def evaluate_model(model, dataloader, device):
             # Sinh báo cáo từ model
             generated_ids = model.generate(front, lateral, max_length=153)
             generated_texts = model.decode(generated_ids)
+
+            # In ra num_examples cặp prediction và reference
+            for i in range(min(num_examples, len(generated_texts))):
+                print(f"Prediction: {generated_texts[i]}")
+                print(f"Reference: {ref_texts[i]}")
+                print("-" * 50)
 
             predictions.extend(generated_texts)
             references.extend(ref_texts)
