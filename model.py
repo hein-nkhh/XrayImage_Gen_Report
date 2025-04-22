@@ -107,7 +107,8 @@ class XrayReportModel(nn.Module):
         outputs = self.biogpt.model(inputs_embeds=text_embeds, attention_mask=attention_mask, labels=labels)
         return outputs
     
-    def generate(self, front, lateral, max_length=150):
+    def generate(self, front, lateral, max_length=150, num_beams=5, do_sample=True, top_k=50, top_p=0.95, temperature=1.0, repetition_penalty=2.0):
+        # Lấy embedding từ vision encoder
         vision_embeds = self.vision_encoder(front, lateral)
         vision_embeds = self.vision_proj(vision_embeds)
 
@@ -123,21 +124,53 @@ class XrayReportModel(nn.Module):
         for _ in range(max_length):
             embed = self.text_embed(cur_input).squeeze(1).unsqueeze(1)
 
+            # Áp dụng fusion layers
             for fusion_layer in self.fusion_layers:
                 embed = fusion_layer(embed, vision_embeds)
 
+            # Tiến hành forward pass qua Biogpt model
             outputs = self.biogpt.model(inputs_embeds=embed, past_key_values=past, use_cache=True)
             logits = outputs.logits
             past = outputs.past_key_values
 
-            next_token = logits.argmax(dim=-1)[:, -1].unsqueeze(1)
+            # Sử dụng các tham số để quyết định từ tiếp theo
+            if do_sample:
+                # Áp dụng temperature và top-k/top-p sampling
+                logits = logits / temperature  # Điều chỉnh logits bằng temperature
+                if top_p > 0.0:
+                    # Top-p sampling (nucleus sampling)
+                    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
+                    cumulative_probs = torch.cumsum(torch.nn.functional.softmax(sorted_logits, dim=-1), dim=-1)
+                    sorted_indices_to_remove = cumulative_probs > top_p
+                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1]
+                    sorted_indices_to_remove[..., 0] = 0
+                    logits[sorted_indices[sorted_indices_to_remove]] = float('-inf')
+                if top_k > 0:
+                    # Top-k sampling
+                    top_k_values, top_k_indices = torch.topk(logits, top_k)
+                    logits = logits.scatter(-1, top_k_indices, top_k_values)
+                    logits = torch.nn.functional.softmax(logits, dim=-1)
+                next_token = torch.multinomial(torch.nn.functional.softmax(logits, dim=-1), num_samples=1)
+            else:
+                # Beam search hoặc greedy search
+                next_token = logits.argmax(dim=-1)[:, -1].unsqueeze(1)
+
+            # Áp dụng penalty để tránh lặp lại
+            if repetition_penalty > 1.0:
+                for i in range(batch_size):
+                    next_token_score = logits[0, next_token[0, i]].item()
+                    if next_token_score < repetition_penalty:
+                        next_token[0, i] = eos_token_id
+
             generated.append(next_token)
             cur_input = next_token
 
+            # Dừng khi gặp token EOS
             if (next_token == eos_token_id).all():
                 break
 
         return torch.cat(generated, dim=1)
+
 
     def decode(self, generated_ids):
         return self.biogpt.tokenizer.batch_decode(generated_ids, skip_special_tokens=True)
