@@ -147,6 +147,7 @@ import torch
 import torch.nn as nn
 from timm import create_model
 from transformers import BioGptForCausalLM, BioGptTokenizer, BioGptConfig
+import torch.nn.functional as F
 
 class ProjectionHead(nn.Module):
     def __init__(self, input_dim, output_dim, dropout=0.1):
