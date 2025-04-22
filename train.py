@@ -2,7 +2,8 @@ import os
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
-from transformers import AdamW, get_scheduler
+from transformers import get_scheduler
+from torch.optim import AdamW
 from tqdm import tqdm
 import numpy as np
 
