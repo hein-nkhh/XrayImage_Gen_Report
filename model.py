@@ -252,8 +252,8 @@ class XrayReportModel(nn.Module):
         outputs = self.biogpt.model(inputs_embeds=text_embeds, attention_mask=attention_mask, labels=labels)
         return outputs
     
-    def generate(self, front, lateral, max_length=150, num_beams=5, do_sample=True, top_k=50, top_p=0.95, temperature=1.0, repetition_penalty=2.0):
-        # Lấy embedding từ vision encoder
+    def generate(self, front, lateral, max_length=150, temperature=1.0, top_k=50, top_p=0.95, repetition_penalty=2.0):
+        # Lấy embedding từ encoder của model
         vision_embeds = self.vision_encoder(front, lateral)
         vision_embeds = self.vision_proj(vision_embeds)
 
@@ -262,59 +262,77 @@ class XrayReportModel(nn.Module):
         bos_token_id = self.biogpt.tokenizer.bos_token_id
         eos_token_id = self.biogpt.tokenizer.eos_token_id
 
-        past = None  # Đảm bảo không có past_key_values từ các lần sinh trước
+        past = None
         cur_input = torch.full((batch_size, 1), bos_token_id, dtype=torch.long, device=device)
         generated = []
 
         for _ in range(max_length):
+            # Embed token hiện tại
             embed = self.text_embed(cur_input).squeeze(1).unsqueeze(1)
 
-            # Áp dụng fusion layers
+            # Fusion giữa embedding văn bản và vision
             for fusion_layer in self.fusion_layers:
                 embed = fusion_layer(embed, vision_embeds)
 
-            # Tiến hành forward pass qua Biogpt model
+            # Tính toán logits
             outputs = self.biogpt.model(inputs_embeds=embed, past_key_values=past, use_cache=True)
             logits = outputs.logits
             past = outputs.past_key_values
 
-            # Sử dụng các tham số để quyết định từ tiếp theo
-            if do_sample:
-                # Áp dụng temperature và top-k/top-p sampling
-                logits = logits / temperature  # Điều chỉnh logits bằng temperature
-                if top_p > 0.0:
-                    # Top-p sampling (nucleus sampling)
-                    sorted_logits, sorted_indices = torch.sort(logits, descending=True)
-                    cumulative_probs = torch.cumsum(torch.nn.functional.softmax(sorted_logits, dim=-1), dim=-1)
-                    sorted_indices_to_remove = cumulative_probs > top_p
-                    sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1]
-                    sorted_indices_to_remove[..., 0] = 0
-                    logits[sorted_indices[sorted_indices_to_remove]] = float('-inf')
-                if top_k > 0:
-                    # Top-k sampling
-                    top_k_values, top_k_indices = torch.topk(logits, top_k)
-                    logits = logits.scatter(-1, top_k_indices, top_k_values)
-                    logits = torch.nn.functional.softmax(logits, dim=-1)
-                next_token = torch.multinomial(torch.nn.functional.softmax(logits, dim=-1), num_samples=1)
-            else:
-                # Beam search hoặc greedy search
-                next_token = logits.argmax(dim=-1)[:, -1].unsqueeze(1)
+            # Sử dụng temperature để điều chỉnh logits
+            logits = logits / temperature
 
-            # Áp dụng penalty để tránh lặp lại
-            if repetition_penalty > 1.0:
-                for i in range(batch_size):
-                    next_token_score = logits[0, next_token[0, i]].item()
-                    if next_token_score < repetition_penalty:
-                        next_token[0, i] = eos_token_id
+            # Xử lý Top-k Sampling nếu top_k > 0
+            if top_k > 0:
+                logits = self.top_k_sampling(logits, top_k)
 
-            generated.append(next_token)
-            cur_input = next_token
+            # Xử lý Top-p Sampling (Nucleus sampling) nếu top_p > 0
+            if top_p > 0.0:
+                logits = self.top_p_sampling(logits, top_p)
 
-            # Dừng khi gặp token EOS
+            # Lấy giá trị token tiếp theo
+            next_token = torch.argmax(logits[:, -1, :], dim=-1).unsqueeze(1)
+
+            # Kiểm tra nếu token tiếp theo là EOS, kết thúc quá trình sinh văn bản
             if (next_token == eos_token_id).all():
                 break
 
+            generated.append(next_token)
+            cur_input = next_token  # Cập nhật token tiếp theo
+
         return torch.cat(generated, dim=1)
+
+    def top_k_sampling(self, logits, top_k):
+        """ Áp dụng top-k sampling """
+        batch_size, seq_len, vocab_size = logits.size()
+
+        # Chọn top-k từ logits
+        top_k_values, top_k_indices = torch.topk(logits, top_k, dim=-1)
+        
+        # Chuyển logits về top-k indices
+        logits = torch.full_like(logits, -float('Inf'))
+        logits.scatter_(-1, top_k_indices, top_k_values)
+        return logits
+
+    def top_p_sampling(self, logits, top_p):
+        """ Áp dụng top-p (nucleus) sampling """
+        batch_size, seq_len, vocab_size = logits.size()
+
+        # Tính xác suất cumulative từ logits
+        softmax_logits = F.softmax(logits, dim=-1)
+        sorted_logits, sorted_indices = torch.sort(softmax_logits, descending=True, dim=-1)
+        cumulative_probs = torch.cumsum(sorted_logits, dim=-1)
+
+        # Xóa các chỉ số có xác suất cumulative vượt quá top_p
+        sorted_indices_to_remove = cumulative_probs > top_p
+        sorted_indices_to_remove[..., 1:] = sorted_indices_to_remove[..., :-1]
+        sorted_indices_to_remove[..., 0] = 0  # Đảm bảo không xóa token đầu tiên
+
+        # Áp dụng mặt nạ vào logits
+        logits = softmax_logits.clone()
+        logits[sorted_indices[sorted_indices_to_remove]] = float('-Inf')
+
+        return logits
 
 
 
