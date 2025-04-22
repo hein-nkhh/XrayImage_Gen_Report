@@ -2,6 +2,8 @@ import evaluate
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from rouge_score import rouge_scorer
 import nltk
+import torch
+from tqdm import tqdm
 
 nltk.download('wordnet')
 nltk.download('punkt')
@@ -46,3 +48,22 @@ def evaluate_all(preds, refs):
         'rouge_l': rouge_l
     }
     return results
+
+def evaluate_model(model, dataloader, device):
+    model.eval()
+    predictions = []
+    references = []
+
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="Evaluating"):
+            front = batch['front'].to(device)
+            lateral = batch['lateral'].to(device)
+            ref_texts = batch['report']
+
+            # Sinh báo cáo từ model
+            generated_texts = model.generate(front, lateral, max_length=153)
+
+            predictions.extend(generated_texts)
+            references.extend(ref_texts)
+
+    return evaluate_all(predictions, references)
