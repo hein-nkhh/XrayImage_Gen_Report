@@ -61,7 +61,8 @@ def evaluate_model(model, dataloader, device):
             ref_texts = batch['report']
 
             # Sinh báo cáo từ model
-            generated_texts = model.generate(front, lateral, max_length=153)
+            generated_ids = model.generate(front, lateral, max_length=153)
+            generated_texts = model.decode(generated_ids)
 
             predictions.extend(generated_texts)
             references.extend(ref_texts)
