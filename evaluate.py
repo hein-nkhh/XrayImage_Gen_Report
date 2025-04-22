@@ -1,4 +1,4 @@
-from pycocoevalcap.meteor.meteor import Meteor
+from nltk.translate.meteor_score import meteor_score
 from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
 from rouge_score import rouge_scorer
 import nltk
@@ -27,12 +27,12 @@ def compute_bleu_scores(references, predictions):
 
 
 def compute_meteor_score(references, predictions):
-    meteor = Meteor()
     scores = []
     for ref, pred in zip(references, predictions):
-        score, _ = meteor.compute_score([ref], [pred])  # Sử dụng phương thức compute_score
+        score = meteor_score([ref.split()], pred.split())  # NLTK yêu cầu input là danh sách các token
         scores.append(score)
-    return sum(scores) / len(scores)
+    
+    return sum(scores) / len(scores)  # Trả về điểm trung bình METEOR
 
 
 def compute_rouge_l_score(references, predictions):
