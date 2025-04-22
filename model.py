@@ -1,15 +1,15 @@
 import torch
 import torch.nn as nn
 from timm import create_model
-from transformers import AutoModelForCausalLM, AutoTokenizer
-import math
+from transformers import BioGptForCausalLM, BioGptTokenizer, BioGptConfig
+
 class ProjectionHead(nn.Module):
     def __init__(self, input_dim, output_dim, dropout=0.1):
         super().__init__()
         self.projection = nn.Sequential(
             nn.Linear(input_dim, output_dim),
+            nn.GELU(),
             nn.LayerNorm(output_dim),
-            nn.ReLU(),
             nn.Dropout(dropout)
         )
 
@@ -19,272 +19,90 @@ class ProjectionHead(nn.Module):
 class DualViewEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
-        
-        # Base encoder cho từng view
-        self.front_encoder = create_model(config.vision_encoder_name, 
-                                        pretrained=True, 
-                                        num_classes=0)
-        self.lateral_encoder = create_model(config.vision_encoder_name, 
-                                        pretrained=True, 
-                                        num_classes=0)
-        
-        # Projection layers
-        self.front_proj = ProjectionHead(self.front_encoder.num_features, 
-                                        config.vision_output_dim)
-        self.lateral_proj = ProjectionHead(self.lateral_encoder.num_features,
-                                        config.vision_output_dim)
-        
-        # Cross-view attention
-        self.cross_attn = EnhancedCrossAttention(hidden_dim=config.cross_attn_dim,
-                                    num_heads=config.cross_attn_heads)
-        
-        self.output_dim = 2 * config.cross_attn_dim
-    
+        self.front_encoder = create_model(config.vision_encoder_name, pretrained=True, num_classes=0)
+        self.lateral_encoder = create_model(config.vision_encoder_name, pretrained=True, num_classes=0)
+
+        # Freeze Swin encoders
+        for param in self.front_encoder.parameters():
+            param.requires_grad = False
+        for param in self.lateral_encoder.parameters():
+            param.requires_grad = False
+
+        self.front_proj = ProjectionHead(self.front_encoder.num_features, config.vision_hidden_size)
+        self.lateral_proj = ProjectionHead(self.lateral_encoder.num_features, config.vision_hidden_size)
+
+        self.cross_attn = nn.MultiheadAttention(embed_dim=config.vision_hidden_size, num_heads=8, batch_first=True)
+        self.fusion_proj = nn.Linear(config.vision_hidden_size * 2, config.vision_hidden_size)
+
     def forward(self, front, lateral):
-        # Encode features
         front_feat = self.front_encoder.forward_features(front)
         lateral_feat = self.lateral_encoder.forward_features(lateral)
-        
-        # Flatten spatial dims
-        front_feat = front_feat.view(front_feat.size(0), -1, front_feat.size(-1))   # [B, N, C]
+
+        front_feat = front_feat.view(front_feat.size(0), -1, front_feat.size(-1))
         lateral_feat = lateral_feat.view(lateral_feat.size(0), -1, lateral_feat.size(-1))
-        
-        # Projection
+
         front_proj = self.front_proj(front_feat)
         lateral_proj = self.lateral_proj(lateral_feat)
-        
-        # Cross-view attention
-        fused_feat = self.cross_attn(front_proj, lateral_proj)
-        return fused_feat
 
-class EnhancedCrossAttention(nn.Module):
-    def __init__(self, hidden_dim=1024, num_heads=8):
-        super().__init__()
-        self.front_attn = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
-        self.lateral_attn = nn.MultiheadAttention(hidden_dim, num_heads, batch_first=True)
+        front_to_lateral, _ = self.cross_attn(front_proj, lateral_proj, lateral_proj)
+        lateral_to_front, _ = self.cross_attn(lateral_proj, front_proj, front_proj)
 
-        self.ffn = nn.Sequential(
-            nn.Linear(hidden_dim*2, 4*hidden_dim*2),
-            nn.GELU(),
-            nn.Linear(4*hidden_dim*2, hidden_dim*2),
-            nn.Dropout(0.1)
-        )
-        self.norm = nn.LayerNorm(hidden_dim*2)
-        
-    def forward(self, front, lateral):
-        # Attention giữa các view
-        attn_front, _ = self.front_attn(front, lateral, lateral)
-        attn_lateral, _ = self.lateral_attn(lateral, front, front)
-        
-        # Kết hợp features
-        combined = torch.cat([attn_front, attn_lateral], dim=-1)
-        
-        # Feed forward
-        fused = self.norm(combined + self.ffn(combined))
-        return fused
+        fused_feat = torch.cat([front_to_lateral, lateral_to_front], dim=-1)
+        return self.fusion_proj(fused_feat)
 
-class TextDecoder(nn.Module):
+class BioGPTDecoder(nn.Module):
     def __init__(self, model_name='microsoft/biogpt'):
         super().__init__()
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
-        self.model = AutoModelForCausalLM.from_pretrained(model_name)
-        self.embedding_dim = self.model.get_input_embeddings().weight.shape[1]
-        
-        # Add special tokens if needed
-        special_tokens = {'bos_token': '<BOS>', 'eos_token': '<EOS>'}
-        num_added = self.tokenizer.add_special_tokens(special_tokens)
-        if num_added > 0:
-            self.model.resize_token_embeddings(len(self.tokenizer))
+        self.config = BioGptConfig.from_pretrained(model_name)
+        self.model = BioGptForCausalLM.from_pretrained(model_name)
+        self.tokenizer = BioGptTokenizer.from_pretrained(model_name)
+        self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
+        self.model.resize_token_embeddings(len(self.tokenizer))
 
-    def encode_text(self, texts, max_length=153):
-        """Encode text to input_ids and attention_mask"""
-        if not isinstance(texts, list):
-            texts = [texts]
-            
-        encoding = self.tokenizer(
-            texts,
-            padding='max_length',
-            truncation=True,
-            max_length=max_length,
-            return_tensors='pt'
-        )
-        return encoding['input_ids'], encoding['attention_mask']
+    def get_embedding_layer(self):
+        return self.model.biogpt.embed_tokens
 
-    def get_input_embeddings(self):
-        return self.model.get_input_embeddings()
-        
-    def decode(self, token_ids):
-        """Decode token IDs to text"""
-        return self.tokenizer.batch_decode(token_ids, skip_special_tokens=True)
-
-    def forward(self, input_ids=None, attention_mask=None, inputs_embeds=None, labels=None):
-        """Forward pass of text decoder"""
-        return self.model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            inputs_embeds=inputs_embeds,
-            labels=labels
+    def encode_text(self, texts, max_length=None):
+        return self.tokenizer(
+            texts, padding='max_length' if max_length else True,
+            truncation=True, max_length=max_length, return_tensors='pt'
         )
 
-    def generate(self, input_ids=None, attention_mask=None, inputs_embeds=None,
-             max_length=150, max_new_tokens=None, **kwargs):
-        """Generate text from inputs"""
-        if inputs_embeds is None and input_ids is None:
-            raise ValueError("Either inputs_embeds or input_ids must be provided")
-
-        with torch.no_grad():
-            # When using inputs_embeds, we need to make sure max_new_tokens is set properly
-            if inputs_embeds is not None and input_ids is None:
-                # Use max_new_tokens instead of max_length when using inputs_embeds
-                if max_new_tokens is None:
-                    max_new_tokens = max_length
-
-                # Create a dummy input_ids tensor to help with generation
-                batch_size = inputs_embeds.size(0)
-                bos_token_id = self.tokenizer.bos_token_id if self.tokenizer.bos_token_id else self.tokenizer.eos_token_id
-                input_ids = torch.tensor([[bos_token_id]] * batch_size, device=inputs_embeds.device)
-                
-                # For inputs_embeds case, we'll use max_new_tokens instead of max_length
-                output_ids = self.model.generate(
-                    input_ids=input_ids,
-                    inputs_embeds=inputs_embeds,
-                    attention_mask=attention_mask,
-                    max_new_tokens=max_new_tokens,
-                    **kwargs
-                )
-            else:
-                # For input_ids case, we can use max_length as originally intended
-                output_ids = self.model.generate(
-                    input_ids=input_ids,
-                    attention_mask=attention_mask,
-                    inputs_embeds=inputs_embeds,
-                    max_length=max_length,
-                    **kwargs
-                )
-                
-            return self.tokenizer.batch_decode(output_ids, skip_special_tokens=True)
-
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=5000):
+class ImageTextFusion(nn.Module):
+    def __init__(self, embed_dim, num_heads):
         super().__init__()
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer('pe', pe.unsqueeze(0))
-        
-    def forward(self, x):
-        return self.pe[:, :x.size(1)]
+        self.cross_attn = nn.MultiheadAttention(embed_dim=embed_dim, num_heads=num_heads, batch_first=True)
+        self.norm = nn.LayerNorm(embed_dim)
+        self.dropout = nn.Dropout(0.1)
+
+    def forward(self, text_embeds, vision_embeds):
+        attn_output, _ = self.cross_attn(text_embeds, vision_embeds, vision_embeds)
+        return self.norm(text_embeds + self.dropout(attn_output))
 
 class XrayReportModel(nn.Module):
-    def __init__(self, vision_encoder, text_decoder, cross_attention, config):
+    def __init__(self, config):
         super().__init__()
-        self.vision_encoder = vision_encoder
-        self.text_decoder = text_decoder
-        self.cross_attention = cross_attention
         self.config = config
+        self.vision_encoder = DualViewEncoder(config)
+        self.biogpt = BioGPTDecoder()
+        self.text_embed = self.biogpt.get_embedding_layer()
 
-        self.vision_proj = nn.Sequential(
-            nn.Linear(vision_encoder.output_dim, text_decoder.model.config.hidden_size),
-            nn.GELU(),
-            nn.LayerNorm(text_decoder.model.config.hidden_size)
-        )
+        self.vision_proj = nn.Linear(config.vision_dim, self.biogpt.config.hidden_size)
+        self.fusion_layers = nn.ModuleList([
+            ImageTextFusion(embed_dim=self.biogpt.config.hidden_size, num_heads=8) for _ in range(2)
+        ])
 
-        self.pos_encoder = PositionalEncoding(text_decoder.model.config.hidden_size)
-        self.dropout = nn.Dropout(config.dropout_rate)
-        self.layer_norm = nn.LayerNorm(text_decoder.model.config.hidden_size)
-
-        self._init_weights()
-
-    def _init_weights(self):
-        for module in self.modules():
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_normal_(module.weight)
-                if module.bias is not None:
-                    nn.init.constant_(module.bias, 0)
-            elif isinstance(module, nn.LayerNorm):
-                nn.init.constant_(module.weight, 1)
-                nn.init.constant_(module.bias, 0)
-
-    def forward(self, front_images, lateral_images, text=None, labels=None):
-        device = front_images.device
-
-        vision_embeds = self.vision_encoder(front_images, lateral_images)
+    def forward(self, front, lateral, report, labels=None):
+        vision_embeds = self.vision_encoder(front, lateral)
         vision_embeds = self.vision_proj(vision_embeds)
-        vision_embeds = vision_embeds + self.pos_encoder(vision_embeds)
-        vision_embeds = self.layer_norm(vision_embeds)
-        vision_embeds = self.dropout(vision_embeds)
 
-        if text is None:
-            raise ValueError("Text input is required for training mode")
+        encoding = self.biogpt.encode_text(report, max_length=self.config.max_len)
+        input_ids = encoding['input_ids'].to(front.device)
+        attention_mask = encoding['attention_mask'].to(front.device)
 
-        input_ids, attention_mask = self.text_decoder.encode_text(text)
-        input_ids = input_ids.to(device)
-        attention_mask = attention_mask.to(device)
+        text_embeds = self.text_embed(input_ids)
+        for fusion_layer in self.fusion_layers:
+            text_embeds = fusion_layer(text_embeds, vision_embeds)
 
-        text_embeds = self.text_decoder.get_input_embeddings()(input_ids)
-        text_embeds = text_embeds + self.pos_encoder(text_embeds)
-
-        fused = torch.cat([vision_embeds, text_embeds], dim=1)
-        fused = self.layer_norm(fused)
-
-        vision_mask = torch.ones((attention_mask.size(0), vision_embeds.size(1)), dtype=attention_mask.dtype, device=device)
-        full_attention_mask = torch.cat([vision_mask, attention_mask], dim=1)
-
-        # Fix: Pad labels with -100 to match fused sequence length
-        if labels is None:
-            labels = input_ids
-
-        vision_pad = torch.full((labels.size(0), vision_embeds.size(1)), -100, dtype=labels.dtype, device=labels.device)
-        padded_labels = torch.cat([vision_pad, labels], dim=1)
-
-        return self.text_decoder(
-            inputs_embeds=fused,
-            attention_mask=full_attention_mask,
-            labels=padded_labels
-        )
-
-    def generate_report(self, front_images, lateral_images, prompt_text=None, **kwargs):
-        device = front_images.device
-        batch_size = front_images.shape[0]
-
-        vision_embeds = self.vision_encoder(front_images, lateral_images)
-        vision_embeds = self.vision_proj(vision_embeds)
-        vision_embeds = vision_embeds + self.pos_encoder(vision_embeds)
-
-        if prompt_text is None:
-            prompt_text = ["Findings: Impression:"] * batch_size
-
-        input_ids, attention_mask = self.text_decoder.encode_text(prompt_text)
-        input_ids = input_ids.to(device)
-        attention_mask = attention_mask.to(device)
-
-        text_embeds = self.text_decoder.get_input_embeddings()(input_ids)
-        text_embeds = text_embeds + self.pos_encoder(text_embeds)
-
-        fused = torch.cat([vision_embeds, text_embeds], dim=1)
-        fused = self.layer_norm(fused)
-
-        vision_mask = torch.ones((attention_mask.size(0), vision_embeds.size(1)), dtype=attention_mask.dtype, device=device)
-        full_attention_mask = torch.cat([vision_mask, attention_mask], dim=1)
-
-        gen_kwargs = {
-            'input_ids': input_ids,
-            'inputs_embeds': fused,
-            'attention_mask': full_attention_mask,
-            'max_new_tokens': self.config.max_gen_length,
-            'num_beams': self.config.num_beams,
-            'repetition_penalty': self.config.repetition_penalty,
-            'length_penalty': self.config.length_penalty,
-            'early_stopping': True,
-            'pad_token_id': self.text_decoder.tokenizer.eos_token_id
-        }
-        gen_kwargs.update(kwargs)
-
-        generated_ids = self.text_decoder.model.generate(**gen_kwargs)
-        
-        # print("Generated IDs:", generated_ids)
-        # print("Decoded output:", self.text_decoder.decode(generated_ids))
-
-        return self.text_decoder.decode(generated_ids)
+        outputs = self.biogpt.model(inputs_embeds=text_embeds, attention_mask=attention_mask, labels=labels)
+        return outputs

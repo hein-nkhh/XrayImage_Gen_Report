@@ -7,7 +7,7 @@ class Config:
     cv_csv = '/kaggle/input/data-split-csv/CV_Data.csv'
     test_csv = '/kaggle/input/data-split-csv/Test_Data.csv'
     image_dir = '/kaggle/input/image-features-attention/xray_images'
-    
+
     # Training hyperparameters
     batch_size = 8
     epochs = 15
@@ -26,6 +26,8 @@ class Config:
     text_decoder_model = 'microsoft/biogpt'
     max_position_embeddings = 512
     hidden_size = 768
+    vision_dim = 1024
+    vision_hidden_size = 1024
 
     # Generation parameters
     max_gen_length = 150
