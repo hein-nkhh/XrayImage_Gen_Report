@@ -32,8 +32,8 @@ class Config:
     # Generation parameters
     max_gen_length = 150
     num_beams = 4
-    repetition_penalty = 1.2
     length_penalty = 1.0
+    rep_penalty = 0.5
 
     # Logging & Evaluation
     log_every_n_steps = 10
