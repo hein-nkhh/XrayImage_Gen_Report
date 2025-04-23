@@ -339,10 +339,7 @@ class EnhancedBioBART(nn.Module):
             label_smoothing=0.1
         )
         
-        return {
-            'loss': ce_loss + 0.1 * cov_loss,
-            'logits': logits
-        }
+        return ce_loss + 0.1 * cov_loss
 
     def generate(self, vis_features, max_length=150):
         vis_ctx = self.vis_proj(vis_features).unsqueeze(1)
