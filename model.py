@@ -278,7 +278,8 @@ class EnhancedBioBARTDecoder(nn.Module):
             for _ in range(3)
         ])
 
-        self.coverage_weights = nn.Parameter(torch.randn(1, 8, 1, 64))  # For 8 attention 
+        self.coverage_weights = nn.Conv2d(1, 1, kernel_size=(1, 64))
+ 
         self.coverage_loss_fn = nn.MSELoss()
 
     def forward(self, vis_features, reports):
