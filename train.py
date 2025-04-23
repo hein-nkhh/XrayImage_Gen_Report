@@ -100,7 +100,7 @@ for epoch in range(Config.epochs):
         report = batch['report']  # raw text list
 
         outputs = model(front, lateral, report)
-        loss = outputs.loss
+        loss = outputs['loss']
 
         loss.backward()
         torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
@@ -134,6 +134,8 @@ for epoch in range(Config.epochs):
             break  # Dừng huấn luyện sớm
 
 # Tính toán và in kết quả evaluation trên tập test sau khi huấn luyện
+model.load_state_dict(torch.load(Config.best_model_path))
+
 print("\nEvaluating on test set...")
 test_metrics = evaluate_model(model = model, dataloader = test_loader, num_examples = 5, test=True)
 print(f"Test metrics: {test_metrics}")
