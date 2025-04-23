@@ -69,6 +69,7 @@ def evaluate_model(model, dataloader, device, num_examples=2):
 
             # In ra num_examples cặp prediction và reference
             for i in range(min(num_examples, len(generated_texts))):
+                print("------------------------------------------------")
                 print(f"Prediction: {generated_texts[i]}")
                 print(f"Reference: {ref_texts[i]}")
                 print("-" * 50)
