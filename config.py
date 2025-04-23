@@ -19,7 +19,7 @@ class Config:
     seed = 42
 
     # Model configuration
-    vision_encoder_name = 'swin_base_patch4_window7_224'
+    biobart_model_name = "GanjinZero/biobart-base"
     vision_output_dim = 1024
     cross_attn_dim = 1024
     cross_attn_heads = 8

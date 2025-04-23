@@ -179,8 +179,10 @@ class CLIPVisionEncoder(nn.Module):
 
     def forward(self, front, lateral):
         # Process images
-        front_inputs = self.clip_processor(images=front, return_tensors="pt", padding=True).to(front.device)
-        lateral_inputs = self.clip_processor(images=lateral, return_tensors="pt", padding=True).to(lateral.device)
+        front_inputs = self.clip_processor(images=front, return_tensors="pt", padding=True)
+        front_inputs = {k: v.to(front.device) for k, v in front_inputs.items()}
+        lateral_inputs = self.clip_processor(images=lateral, return_tensors="pt", padding=True)
+        lateral_inputs = {k: v.to(lateral.device) for k, v in lateral_inputs.items()}
 
         front_feats = self.clip_model.get_image_features(**front_inputs)  # (B, projection_dim)
         lateral_feats = self.clip_model.get_image_features(**lateral_inputs)
