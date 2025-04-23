@@ -10,7 +10,7 @@ class Config:
 
     # Training hyperparameters
     batch_size = 8
-    epochs = 15
+    epochs = 20
     lr = 3e-5
     warmup_steps = 500
     max_len = 153

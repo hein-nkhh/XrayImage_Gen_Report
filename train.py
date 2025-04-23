@@ -48,6 +48,8 @@ test_loader = DataLoader(test_dataset, batch_size=Config.batch_size,
 
 if not os.path.exists(Config.output_dir):
     os.makedirs(Config.output_dir)
+if not os.path.exists(Config.best_model_path):
+    os.makedirs(Config.best_model_path)
 
 # Model
 model = XrayReportModel(Config).to(Config.device)
@@ -126,12 +128,12 @@ for epoch in range(Config.epochs):
             print(f"✅ Saved best model (BLEU-1 = {best_bleu1:.4f}) at {Config.best_model_path}")
 
         # Kiểm tra early stopping
-        early_stopping(metrics['bleu1'], model)
-        if early_stopping.early_stop:
-            print("Early stopping triggered.")
-            # Khôi phục mô hình tốt nhất
-            model.load_state_dict(early_stopping.best_model)
-            break  # Dừng huấn luyện sớm
+        # early_stopping(metrics['bleu1'], model)
+        # if early_stopping.early_stop:
+        #     print("Early stopping triggered.")
+        #     # Khôi phục mô hình tốt nhất
+        #     model.load_state_dict(early_stopping.best_model)
+        #     break  # Dừng huấn luyện sớm
 
 # Tính toán và in kết quả evaluation trên tập test sau khi huấn luyện
 model.load_state_dict(torch.load(Config.best_model_path))
