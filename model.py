@@ -4,6 +4,7 @@ import torch.nn.functional as F
 from transformers import CLIPProcessor, CLIPModel
 from transformers import BartTokenizer, BartForConditionalGeneration
 from config import Config
+import torch.nn.functional as F
 
 class ProjectionHead(nn.Module):
     def __init__(self, input_dim, output_dim, dropout=0.1):
@@ -25,10 +26,7 @@ class CLIPVisionEncoder(nn.Module):
         self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
         
         for name, param in self.clip_model.vision_model.named_parameters():
-            if "encoder.layer.10" in name or "encoder.layer.11" in name:
-                param.requires_grad = True
-            else:
-                param.requires_grad = False
+            param.requires_grad = False
 
 
         self.hidden_size = self.clip_model.config.vision_config.hidden_size  # thường là 768
@@ -133,6 +131,8 @@ class XrayReportModel(nn.Module):
                             num_heads=8)
             for _ in range(2)
         ])
+        self.loss_fn = nn.CrossEntropyLoss(ignore_index=self.biobart.tokenizer.pad_token_id, label_smoothing=0.1)
+
 
     def forward(self, front, lateral, reports):
         fused_vis = self.vision_encoder(front, lateral)  # (B,1,2H)
@@ -157,6 +157,18 @@ class XrayReportModel(nn.Module):
             labels=labels,
             decoder_attention_mask=decoder_mask
         )
+        logits = outputs.logits
+        loss = self.loss_fn(logits.view(-1, logits.size(-1)), labels.view(-1))
+        
+        # Optional: Add coverage loss (simple penalty for repeated tokens)
+        probs = F.softmax(logits, dim=-1)
+        token_probs = probs.gather(2, labels.unsqueeze(-1)).squeeze(-1)  # (B, L)
+        rep_penalty = torch.mean(torch.sum(token_probs, dim=1) / labels.size(1))  # normalize
+        loss += self.config.coverage_lambda * rep_penalty
+
+        outputs.loss = loss
+        return outputs
+
         return outputs
 
     def generate(self, front, lateral, max_length=150, num_beams=4):
