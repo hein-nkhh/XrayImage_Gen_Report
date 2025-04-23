@@ -126,46 +126,47 @@ class XrayReportModel(nn.Module):
         self.vision_encoder = CLIPVisionEncoder(config)
         self.biobart = BioBARTDecoder(config.biobart_model_name)
         self.text_embed = self.biobart.get_embedding_layer()
-        self.vision_proj = nn.Linear(config.vision_hidden_size * 2, self.biobart.model.config.d_model)
-        self.fusion_layers = nn.ModuleList([BiDirectionalFusion(self.biobart.model.config.d_model, 8) for _ in range(2)])
-        self.loss_fn = nn.CrossEntropyLoss(ignore_index=self.biobart.tokenizer.pad_token_id, label_smoothing=0.1)
+        self.vision_proj = nn.Linear(config.vision_hidden_size * 2,
+                                     self.biobart.model.config.d_model)
+        self.fusion_layers = nn.ModuleList([
+            BiDirectionalFusion(embed_dim=self.biobart.model.config.d_model,
+                            num_heads=8)
+            for _ in range(2)
+        ])
 
     def forward(self, front, lateral, reports):
-        fused_vis = self.vision_encoder(front, lateral)
-        vis_ctx = self.vision_proj(fused_vis.squeeze(1))
+        fused_vis = self.vision_encoder(front, lateral)  # (B,1,2H)
+        fuse = fused_vis.squeeze(1)                     # (B,2H)
+        vis_ctx = self.vision_proj(fuse)                # (B,d_model)
 
-        tok = self.biobart.encode_reports(reports, self.config.max_len)
+        tok = self.biobart.encode_reports(reports, max_length=self.config.max_len)
         labels = tok['input_ids'].to(Config.device)
-        attention_mask = (labels != self.biobart.tokenizer.pad_token_id).long().to(Config.device)
+        decoder_mask = (labels != self.biobart.tokenizer.pad_token_id).long().to(Config.device)
 
-        dec_inputs = vis_ctx.unsqueeze(1).expand(-1, labels.size(1), -1)
-        for layer in self.fusion_layers:
-            dec_inputs = layer(dec_inputs, vis_ctx.unsqueeze(1))
+        B, L = labels.size()
+        dec_inputs = vis_ctx.unsqueeze(1).expand(-1, L, -1)  # (B,L,d_model)
 
-        model_output = self.biobart.model(
-            inputs_embeds=dec_inputs,
-            labels=None,
-            decoder_attention_mask=attention_mask,
-            return_dict=True
+        x = dec_inputs
+        # Use projected vision context for fusion
+        vis_context_seq = vis_ctx.unsqueeze(1)  # (B,1,d_model)
+        for fusion in self.fusion_layers:
+            x = fusion(x, vis_context_seq)
+
+        outputs = self.biobart.model(
+            inputs_embeds=x,
+            labels=labels,
+            decoder_attention_mask=decoder_mask
         )
-
-        logits = model_output.logits
-        loss = self.loss_fn(logits.view(-1, logits.size(-1)), labels.view(-1))
-
-        # Optional: Add coverage loss (simple penalty for repeated tokens)
-        probs = F.softmax(logits, dim=-1)
-        token_probs = probs.gather(2, labels.unsqueeze(-1)).squeeze(-1)  # (B, L)
-        rep_penalty = torch.mean(torch.sum(token_probs, dim=1) / labels.size(1))  # normalize
-        loss += self.config.coverage_lambda * rep_penalty
-
-        model_output.loss = loss
-        return model_output
+        return outputs
 
     def generate(self, front, lateral, max_length=150, num_beams=4):
         fused_vis = self.vision_encoder(front, lateral)
-        vis_ctx = self.vision_proj(fused_vis.squeeze(1)).unsqueeze(1)
+        fuse = fused_vis.squeeze(1)
+        vis_ctx = self.vision_proj(fuse)
+
+        init_embed = vis_ctx.unsqueeze(1)
         gen_ids = self.biobart.model.generate(
-            inputs_embeds=vis_ctx,
+            inputs_embeds=init_embed,
             max_length=max_length,
             num_beams=num_beams,
             pad_token_id=self.biobart.tokenizer.pad_token_id,
