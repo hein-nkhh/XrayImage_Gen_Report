@@ -198,25 +198,19 @@ class EnhancedCLIPVisionEncoder(nn.Module):
         self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
         self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
         
-        # Freeze CLIP layers
+        # Freeze vision model
         for param in self.clip_model.vision_model.parameters():
             param.requires_grad = False
 
-        self.hidden_size = self.clip_model.config.vision_config.hidden_size
-        self.num_patches = self.clip_model.config.vision_config.image_size // 14 - 1  # For 224x224 image
-        
-        # Positional embeddings for patches
-        self.positional_embed = nn.Parameter(torch.randn(1, self.num_patches**2 + 1, self.hidden_size))
-        
-        # Enhanced projection with spatial attention
+        self.hidden_dim = self.clip_model.config.vision_config.hidden_size  # 768
         self.proj_head = nn.Sequential(
-            nn.Linear(self.hidden_size, config.vision_hidden_size),
+            nn.Linear(self.hidden_dim, config.vision_hidden_size),
             nn.GELU(),
             nn.LayerNorm(config.vision_hidden_size),
             nn.Dropout(0.1)
         )
-        
-        # Cross-view fusion transformer
+
+        # Cross-view fusion
         self.cross_fusion = nn.TransformerEncoder(
             encoder_layer=nn.TransformerEncoderLayer(
                 d_model=config.vision_hidden_size,
@@ -227,36 +221,39 @@ class EnhancedCLIPVisionEncoder(nn.Module):
             num_layers=2
         )
 
+        # Attention pooling query
+        self.query = nn.Parameter(torch.randn(1, 1, config.vision_hidden_size))
+
     def _extract_features(self, images):
-        inputs = self.clip_processor(images=images, return_tensors="pt")
-        inputs = {k: v.to(Config.device) for k, v in inputs.items()}
-        features = self.clip_model.vision_model(**inputs).last_hidden_state
-        features = features + self.positional_embed
-        return features[:, 1:, :]  # Remove CLS token
+        with torch.no_grad():
+            inputs = self.clip_processor(images=images, return_tensors="pt")
+            inputs = {k: v.to(Config.device) for k, v in inputs.items()}
+            features = self.clip_model.vision_model(**inputs).last_hidden_state  # [B, 197, 768]
+        return features  # keep CLS token (197 tokens)
 
     def _attention_pooling(self, x):
-        """Learnable attention pooling with query"""
-        query = nn.Parameter(torch.randn(1, 1, x.size(-1))).to(x.device)
+        B = x.size(0)
+        query = self.query.expand(B, -1, -1)  # [B, 1, D]
         attn_output, _ = nn.MultiheadAttention(
             embed_dim=x.size(-1),
             num_heads=8,
             batch_first=True
-        )(query.expand(x.size(0), -1, -1), x, x)
-        return attn_output.squeeze(1)
+        )(query, x, x)
+        return attn_output.squeeze(1)  # [B, D]
 
     def forward(self, front, lateral):
-        # Feature extraction
-        front_feats = self.proj_head(self._extract_features(front))
-        lateral_feats = self.proj_head(self._extract_features(lateral))
-        
-        # Concatenate features from both views
-        combined = torch.cat([front_feats, lateral_feats], dim=1)
-        
+        # Extract features
+        front_feats = self.proj_head(self._extract_features(front))  # [B, 197, D]
+        lateral_feats = self.proj_head(self._extract_features(lateral))  # [B, 197, D]
+
+        # Concatenate both views
+        combined = torch.cat([front_feats, lateral_feats], dim=1)  # [B, 394, D]
+
         # Cross-view fusion
-        fused = self.cross_fusion(combined)
-        
+        fused = self.cross_fusion(combined)  # [B, 394, D]
+
         # Attention pooling
-        return self._attention_pooling(fused)
+        return self._attention_pooling(fused)  # [B, D]
 
 class EnhancedBioBARTDecoder(nn.Module):
     def __init__(self, config):
