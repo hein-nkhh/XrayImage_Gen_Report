@@ -60,8 +60,8 @@ def evaluate_model(model, dataloader, device, num_examples=2):
 
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Evaluating"):
-            front = batch['front'].to(device)
-            lateral = batch['lateral'].to(device)
+            front = batch['front']
+            lateral = batch['lateral']
             ref_texts = batch['report']
 
             # Sinh báo cáo từ model
