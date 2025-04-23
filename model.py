@@ -326,10 +326,9 @@ class EnhancedBioBARTDecoder(nn.Module):
                 coverage += attn_weights.mean(dim=1).unsqueeze(-1)
         
         # Calculate coverage loss
-        cov_loss = self.coverage_loss_fn(
-            F.conv2d(coverage.permute(0,2,1).unsqueeze(1), self.coverage_weights),
-            torch.ones_like(coverage)
-        )
+        cov_out = self.coverage_weights(coverage.permute(0, 2, 1).unsqueeze(1))  # [B, 1, 1, L]
+        cov_out = cov_out.squeeze(2).permute(0, 2, 1)  # back to [B, L, 1]
+        cov_loss = self.coverage_loss_fn(cov_out, torch.ones_like(coverage))
         
         # Final outputs
         logits = self.model.lm_head(text_embeds)
