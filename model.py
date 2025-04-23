@@ -351,3 +351,63 @@ class EnhancedBioBART(nn.Module):
             early_stopping=True,
             pad_token_id=self.tokenizer.pad_token_id
         )
+
+class XrayReportModel(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        
+        # Vision Encoder
+        self.vision_encoder = EnhancedCLIPVisionEncoder(config)
+        
+        # Text Decoder
+        self.biobart = EnhancedBioBART(config)
+        
+        # Fusion Bridge
+        self.fusion_bridge = nn.Sequential(
+            nn.Linear(config.vision_hidden_size, config.vision_hidden_size * 2),
+            nn.GELU(),
+            nn.LayerNorm(config.vision_hidden_size * 2),
+            nn.Dropout(0.2),
+            nn.Linear(config.vision_hidden_size * 2, self.biobart.model.config.d_model)
+        )
+        
+        # Report Projection
+        self.report_proj = nn.Linear(
+            self.biobart.model.config.d_model,
+            self.biobart.model.shared.num_embeddings,
+            bias=False
+        )
+        
+        # Initialize weights
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            module.weight.data.normal_(mean=0.0, std=0.02)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
+
+    def forward(self, front_imgs, lateral_imgs, reports):
+        # Vision pathway
+        vis_features = self.vision_encoder(front_imgs, lateral_imgs)
+        fused_features = self.fusion_bridge(vis_features)
+        
+        # Text processing
+        outputs = self.biobart(fused_features, reports)
+        
+        # Final projection
+        logits = self.report_proj(outputs['logits'])
+        
+        return outputs['loss']
+
+    def generate(self, front_imgs, lateral_imgs, **kwargs):
+        # Extract visual features
+        vis_features = self.vision_encoder(front_imgs, lateral_imgs)
+        fused_features = self.fusion_bridge(vis_features)
+        
+        # Generate with beam search
+        return self.biobart.generate(fused_features, **kwargs)
