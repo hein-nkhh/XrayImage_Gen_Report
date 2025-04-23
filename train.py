@@ -61,8 +61,8 @@ for epoch in range(Config.epochs):
     total_loss = 0
 
     for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1}"):
-        front = batch['front'].to(Config.device)
-        lateral = batch['lateral'].to(Config.device)
+        front = batch['front']
+        lateral = batch['lateral']
         report = batch['report']  # raw text list
 
         outputs = model(front, lateral, report)
