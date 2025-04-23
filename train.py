@@ -8,7 +8,7 @@ from tqdm import tqdm
 import numpy as np
 
 from dataset import XrayReportDataset
-from model import XrayReportModel
+from model1 import XrayReportModel
 from config import Config
 from evaluate import evaluate_model
 
