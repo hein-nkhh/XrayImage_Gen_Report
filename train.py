@@ -59,10 +59,37 @@ lr_scheduler = get_scheduler("linear", optimizer=optimizer,
                              num_warmup_steps=Config.warmup_steps,
                              num_training_steps=num_training_steps)
 
-# Loss: handled inside model (CrossEntropy + ignore pad) → không cần tạo ngoài
+class EarlyStopping:
+    def __init__(self, patience=5, delta=0):
+        """
+        Arguments:
+        patience: Số epochs không có sự cải thiện trước khi dừng huấn luyện.
+        delta: Sự thay đổi tối thiểu trong chỉ số validation để coi là sự cải thiện.
+        """
+        self.patience = patience
+        self.delta = delta
+        self.best_score = None
+        self.counter = 0
+        self.early_stop = False
+        self.best_model = None
 
-# Training loop
-best_bleu4 = 0
+    def __call__(self, score, model):
+        if self.best_score is None:
+            self.best_score = score
+            self.best_model = model.state_dict()
+        elif score < self.best_score - self.delta:
+            self.best_score = score
+            self.best_model = model.state_dict()
+            self.counter = 0
+        else:
+            self.counter += 1
+            if self.counter >= self.patience:
+                self.early_stop = True
+
+# Training loop with Early Stopping
+early_stopping = EarlyStopping(patience=Config.patience, delta=0.001)  # dừng sau 3 epochs không cải thiện
+
+best_bleu1 = 0
 for epoch in range(Config.epochs):
     model.train()
     total_loss = 0
@@ -97,7 +124,16 @@ for epoch in range(Config.epochs):
             best_bleu1 = metrics['bleu1']
             torch.save(model.state_dict(), Config.best_model_path)
             print(f"✅ Saved best model (BLEU-1 = {best_bleu1:.4f}) at {Config.best_model_path}")
-            
+
+        # Kiểm tra early stopping
+        early_stopping(metrics['bleu1'], model)
+        if early_stopping.early_stop:
+            print("Early stopping triggered.")
+            # Khôi phục mô hình tốt nhất
+            model.load_state_dict(early_stopping.best_model)
+            break  # Dừng huấn luyện sớm
+
+# Tính toán và in kết quả evaluation trên tập test sau khi huấn luyện
 print("\nEvaluating on test set...")
 test_metrics = evaluate_model(model, test_loader, Config.device)
 print(f"Test metrics: {test_metrics}")

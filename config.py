@@ -38,7 +38,7 @@ class Config:
     # Logging & Evaluation
     log_every_n_steps = 10
     eval_every_n_epochs = 1
-    patience = 3
+    patience = 8
 
     # Model saving
     output_dir = '/kaggle/working/checkpoints'
