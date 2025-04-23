@@ -303,7 +303,7 @@ class EnhancedBioBARTDecoder(nn.Module):
             # Self-attention
             text_embeds = layer(
                 text_embeds, 
-                attention_mask=inputs.attn_mask
+                attention_mask=attn_mask
             )[0]
             
             # Cross-modal attention
