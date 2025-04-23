@@ -68,14 +68,7 @@ def evaluate_model(model, dataloader, num_examples=1, test = False):
             generated_texts = model.generate(front, lateral, max_length=153)
 
             # In ra num_examples cặp prediction và reference
-            if test:
-                for i in range(num_examples):
-                    print("------------------------------------------------")
-                    print(f"Prediction: {generated_texts[i]}")
-                    print(f"Reference: {ref_texts[i]}")
-                    print("-" * 50)
-            else:
-                None
+
             
             predictions.extend(generated_texts)
             references.extend(ref_texts)
