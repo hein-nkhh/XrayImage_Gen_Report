@@ -14,6 +14,16 @@ from evaluate import evaluate_model
 
 torch.manual_seed(Config.seed)
 
+def custom_collate(batch):
+    front_imgs = [item['front'] for item in batch]
+    lateral_imgs = [item['lateral'] for item in batch]
+    reports = [item['report'] for item in batch]
+    return {
+        'front': front_imgs,
+        'lateral': lateral_imgs,
+        'report': reports
+    }
+    
 # Dataset & DataLoader
 train_dataset = XrayReportDataset(Config.train_csv, Config.image_dir,
                                    transform_front=XrayReportDataset.get_transform_front(),
@@ -23,8 +33,11 @@ val_dataset = XrayReportDataset(Config.test_csv, Config.image_dir,
                                  transform_front=XrayReportDataset.get_transform_front(),
                                  transform_lateral=XrayReportDataset.get_transform_lateral())
 
-train_loader = DataLoader(train_dataset, batch_size=Config.batch_size, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=Config.batch_size, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=Config.batch_size,
+                          shuffle=True, collate_fn=custom_collate)
+
+val_loader = DataLoader(val_dataset, batch_size=Config.batch_size,
+                        shuffle=False, collate_fn=custom_collate)
 
 if not os.path.exists(Config.output_dir):
     os.makedirs(Config.output_dir)
