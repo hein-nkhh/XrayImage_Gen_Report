@@ -23,8 +23,13 @@ class CLIPVisionEncoder(nn.Module):
         super().__init__()
         self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
         self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
+        
         for param in self.clip_model.parameters():
             param.requires_grad = False
+            
+        for name, param in self.clip_model.vision_model.named_parameters():
+            if "encoder.layer.10" in name or "encoder.layer.11" in name:
+                param.requires_grad = True
 
         self.hidden_size = self.clip_model.config.vision_config.hidden_size  # thường là 768
         self.proj_head = ProjectionHead(self.hidden_size, config.vision_hidden_size)
