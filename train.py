@@ -29,7 +29,11 @@ train_dataset = XrayReportDataset(Config.train_csv, Config.image_dir,
                                    transform_front=XrayReportDataset.get_transform_front(),
                                    transform_lateral=XrayReportDataset.get_transform_lateral())
 
-val_dataset = XrayReportDataset(Config.test_csv, Config.image_dir,
+val_dataset = XrayReportDataset(Config.cv_csv, Config.image_dir,
+                                 transform_front=XrayReportDataset.get_transform_front(),
+                                 transform_lateral=XrayReportDataset.get_transform_lateral())
+
+test_dataset = XrayReportDataset(Config.test_csv, Config.image_dir,
                                  transform_front=XrayReportDataset.get_transform_front(),
                                  transform_lateral=XrayReportDataset.get_transform_lateral())
 
@@ -37,6 +41,9 @@ train_loader = DataLoader(train_dataset, batch_size=Config.batch_size,
                           shuffle=True, collate_fn=custom_collate)
 
 val_loader = DataLoader(val_dataset, batch_size=Config.batch_size,
+                        shuffle=False, collate_fn=custom_collate)
+
+test_loader = DataLoader(test_dataset, batch_size=Config.batch_size,
                         shuffle=False, collate_fn=custom_collate)
 
 if not os.path.exists(Config.output_dir):
@@ -85,7 +92,12 @@ for epoch in range(Config.epochs):
         metrics = evaluate_model(model, val_loader, Config.device)
         print(f"Validation metrics: {metrics}")
 
-        if metrics['bleu4'] > best_bleu4:
-            best_bleu4 = metrics['bleu4']
+        # Sử dụng BLEU-1 để lưu mô hình
+        if metrics['bleu1'] > best_bleu1:
+            best_bleu1 = metrics['bleu1']
             torch.save(model.state_dict(), Config.best_model_path)
-            print(f"✅ Saved best model (BLEU-4 = {best_bleu4:.4f}) at {Config.best_model_path}")
+            print(f"✅ Saved best model (BLEU-1 = {best_bleu1:.4f}) at {Config.best_model_path}")
+            
+print("\nEvaluating on test set...")
+test_metrics = evaluate_model(model, test_loader, Config.device)
+print(f"Test metrics: {test_metrics}")
