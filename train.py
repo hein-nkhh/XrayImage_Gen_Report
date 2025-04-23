@@ -116,7 +116,7 @@ for epoch in range(Config.epochs):
 
     # 🔍 Evaluate on validation set
     if (epoch + 1) % Config.eval_every_n_epochs == 0:
-        metrics = evaluate_model(model, val_loader, Config.device)
+        metrics = evaluate_model(model, val_loader, Config.device, test=False)
         print(f"Validation metrics: {metrics}")
 
         # Sử dụng BLEU-1 để lưu mô hình
@@ -135,5 +135,5 @@ for epoch in range(Config.epochs):
 
 # Tính toán và in kết quả evaluation trên tập test sau khi huấn luyện
 print("\nEvaluating on test set...")
-test_metrics = evaluate_model(model, test_loader, Config.device)
+test_metrics = evaluate_model(model, test_loader, Config.device, test=True)
 print(f"Test metrics: {test_metrics}")
