@@ -28,7 +28,7 @@ val_loader = DataLoader(val_dataset, batch_size=Config.batch_size, shuffle=False
 
 if not os.path.exists(Config.output_dir):
     os.makedirs(Config.output_dir)
-    
+
 # Model
 model = XrayReportModel(Config).to(Config.device)
 
@@ -39,8 +39,7 @@ lr_scheduler = get_scheduler("linear", optimizer=optimizer,
                              num_warmup_steps=Config.warmup_steps,
                              num_training_steps=num_training_steps)
 
-# Loss
-criterion = nn.CrossEntropyLoss(ignore_index=model.biogpt.tokenizer.pad_token_id)
+# Loss: handled inside model (CrossEntropy + ignore pad) → không cần tạo ngoài
 
 # Training loop
 best_bleu4 = 0
@@ -51,16 +50,14 @@ for epoch in range(Config.epochs):
     for batch in tqdm(train_loader, desc=f"Epoch {epoch + 1}"):
         front = batch['front'].to(Config.device)
         lateral = batch['lateral'].to(Config.device)
-        report = batch['report']
+        report = batch['report']  # raw text list
 
-        encoding = model.biogpt.encode_text(report, max_length=Config.max_len)
-        input_ids = encoding['input_ids'].to(Config.device)
-        labels = input_ids.clone()
-
-        outputs = model(front, lateral, report, labels=labels)
+        outputs = model(front, lateral, report)
         loss = outputs.loss
 
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        
         optimizer.step()
         lr_scheduler.step()
         optimizer.zero_grad()
