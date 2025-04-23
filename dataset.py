@@ -3,6 +3,16 @@ import pandas as pd
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision import transforms
+import re
+
+def clean_text(text):
+    text = str(text) 
+    text = re.sub(r'[^\w\s.]', '', text)  
+    text = ' '.join(text.split()) 
+    text = text.lower() 
+    text = re.sub(r'\.{2,}', '.', text) 
+    text = text.strip('.') 
+    return text
 
 class XrayReportDataset(Dataset):
     def __init__(self, csv_file, image_dir, transform_front=None, transform_lateral=None):
@@ -28,6 +38,7 @@ class XrayReportDataset(Dataset):
             image2 = self.transform_lateral(image2)
 
         report = row.get('Report', None)
+        report = clean_text(report)
         return {'front': image1, 'lateral': image2, 'report': report}
 
     @staticmethod
