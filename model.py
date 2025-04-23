@@ -251,7 +251,7 @@ class EnhancedCLIPVisionEncoder(nn.Module):
 
         # Cross-view fusion
         fused = self.cross_fusion(combined)  # [B, 394, D]
-
+        fused = fused.to(Config.device)
         # Attention pooling
         return self._attention_pooling(fused)  # [B, D]
 
@@ -259,7 +259,7 @@ class EnhancedBioBARTDecoder(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.tokenizer = BartTokenizer.from_pretrained(config.biobart_model_name)
-        self.model = BartForConditionalGeneration.from_pretrained(config.biobart_model_name)
+        self.model = BartForConditionalGeneration.frdeviceom_pretrained(config.biobart_model_name)
 
         if self.tokenizer.pad_token is None:
             self.tokenizer.add_special_tokens({'pad_token': '[PAD]'})
