@@ -46,10 +46,8 @@ val_loader = DataLoader(val_dataset, batch_size=Config.batch_size,
 test_loader = DataLoader(test_dataset, batch_size=Config.batch_size,
                         shuffle=False, collate_fn=custom_collate)
 
-# Tạo thư mục chứa model nếu chưa tồn tại
 if not os.path.exists(Config.output_dir):
     os.makedirs(Config.output_dir)
-    
 if not os.path.exists(Config.best_model_path):
     os.makedirs(Config.best_model_path)
 
@@ -65,6 +63,11 @@ lr_scheduler = get_scheduler("linear", optimizer=optimizer,
 
 class EarlyStopping:
     def __init__(self, patience=5, delta=0):
+        """
+        Arguments:
+        patience: Số epochs không có sự cải thiện trước khi dừng huấn luyện.
+        delta: Sự thay đổi tối thiểu trong chỉ số validation để coi là sự cải thiện.
+        """
         self.patience = patience
         self.delta = delta
         self.best_score = None
@@ -86,7 +89,7 @@ class EarlyStopping:
                 self.early_stop = True
 
 # Training loop with Early Stopping
-early_stopping = EarlyStopping(patience=Config.patience, delta=0.001)
+early_stopping = EarlyStopping(patience=Config.patience, delta=0.001)  # dừng sau 3 epochs không cải thiện
 
 best_bleu1 = 0
 for epoch in range(Config.epochs):
@@ -113,28 +116,27 @@ for epoch in range(Config.epochs):
     avg_loss = total_loss / len(train_loader)
     print(f"\nEpoch {epoch + 1} Loss: {avg_loss:.4f}")
 
-    # Evaluate on validation set
+    # 🔍 Evaluate on validation set
     if (epoch + 1) % Config.eval_every_n_epochs == 0:
-        metrics = evaluate_model(model=model, dataloader=val_loader, num_examples=5, test=False)
+        metrics = evaluate_model(model = model, dataloader = val_loader, num_examples = 5, test=False)
         print(f"Validation metrics: {metrics}")
 
-        # Save model with best BLEU-1 score
+        # Sử dụng BLEU-1 để lưu mô hình
         if metrics['bleu1'] > best_bleu1:
             best_bleu1 = metrics['bleu1']
             torch.save(model.state_dict(), Config.best_model_path)
             print(f"✅ Saved best model (BLEU-1 = {best_bleu1:.4f}) at {Config.best_model_path}")
 
-        # Check early stopping
+        # Kiểm tra early stopping
         early_stopping(metrics['bleu1'], model)
         if early_stopping.early_stop:
             print("Early stopping triggered.")
+            # Khôi phục mô hình tốt nhất
             model.load_state_dict(early_stopping.best_model)
-            break  # Stop training
+            break  # Dừng huấn luyện sớm
 
-# Load the best model for evaluation
-model.load_state_dict(torch.load(Config.best_model_path))
+# Tính toán và in kết quả evaluation trên tập test sau khi huấn luyện
 
-# Evaluate on the test set
 print("\nEvaluating on test set...")
-test_metrics = evaluate_model(model=model, dataloader=test_loader, num_examples=5, test=True)
+test_metrics = evaluate_model(model = model, dataloader = test_loader, num_examples = 5, test=True)
 print(f"Test metrics: {test_metrics}")
