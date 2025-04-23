@@ -287,8 +287,9 @@ class EnhancedBioBARTDecoder(nn.Module):
 
         inputs = self.tokenizer(
             reports,
-            padding='max_length',
-            max_length=Config.max_len,
+            padding=True,  # Tự động thêm padding để các chuỗi có cùng độ dài
+            truncation=True,  # Cắt bớt chuỗi dài quá mức
+            max_length=Config.max_len,  # Giới hạn chiều dài tối đa của chuỗi
             return_tensors='pt'
         ).to(Config.device)
 
@@ -327,12 +328,9 @@ class EnhancedBioBARTDecoder(nn.Module):
 
         # Calculate coverage loss
         cov_out = self.coverage_weights(coverage.permute(0, 2, 1).unsqueeze(1))  # [B, 1, 1, L]
-        # print("cov_out shape before squeeze:", cov_out.shape)
         cov_out = cov_out.squeeze(2).permute(0, 2, 1)
-        # print("cov_out shape after squeeze and permute:", cov_out.shape)
 
         coverage = coverage[:, :cov_out.size(1)]
-        # print("coverage shape after truncating:", coverage.shape)
 
         cov_loss = self.coverage_loss_fn(cov_out, coverage)
 
