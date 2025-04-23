@@ -16,7 +16,7 @@ class Config:
     max_len = 153
     dropout_rate = 0.1
     gradient_accumulation_steps = 1
-    seed = 42
+    seed = 7
 
     # Model configuration
     biobart_model_name = "GanjinZero/biobart-base"
@@ -41,7 +41,7 @@ class Config:
 
     # Model saving
     output_dir = '/kaggle/working/checkpoints'
-    best_model_path = os.path.join(output_dir, 'best_model.pt')
+    best_model_path = '/kaggle/working/checkpoints/best_model.pt'
     save_every_n_epochs = 1
 
     # Device
