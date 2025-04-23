@@ -1,26 +1,40 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from transformers import AutoModel, AutoProcessor, BartTokenizer, BartForConditionalGeneration
+import open_clip
+from transformers import BartTokenizer, BartForConditionalGeneration
+from PIL import Image
 from config import Config
 
 class BiomedCLIPVisionEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
-        # Using BiomedCLIP instead of standard CLIP for medical domain expertise
-        self.vision_model = AutoModel.from_pretrained("microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224")
-        self.processor = AutoProcessor.from_pretrained("microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224")
+        # Load BiomedCLIP model using open_clip
+        self.vision_model, _, self.preprocess = open_clip.create_model_and_transforms(
+            'hf-hub:microsoft/BiomedCLIP-PubMedBERT_256-vit_base_patch16_224'
+        )
         
-        # Freeze base vision model
+        # Freeze vision model parameters
         for param in self.vision_model.parameters():
             param.requires_grad = False
 
-        self.hidden_dim = self.vision_model.config.vision_config.hidden_size  # Usually 768
+        self.hidden_dim = 768  # Standard dimension for ViT models
         self.proj_head = nn.Sequential(
             nn.Linear(self.hidden_dim, config.vision_hidden_size),
             nn.GELU(),
             nn.LayerNorm(config.vision_hidden_size),
             nn.Dropout(0.1)
+        )
+
+        # Feature-map extractor for patch-level features
+        self.feature_extractor = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3)
+        self.feature_proj = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.Conv2d(128, config.vision_hidden_size, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(config.vision_hidden_size),
+            nn.ReLU()
         )
 
         # Cross-view fusion
@@ -34,7 +48,7 @@ class BiomedCLIPVisionEncoder(nn.Module):
             num_layers=2
         )
 
-        # Attention pooling for global features
+        # Attention pooling
         self.attn_pool = nn.MultiheadAttention(
             embed_dim=config.vision_hidden_size,
             num_heads=8,
@@ -45,67 +59,104 @@ class BiomedCLIPVisionEncoder(nn.Module):
         # Abnormality detection module
         self.abnormality_detector = AbnormalityDetector(config.vision_hidden_size)
 
-    def _extract_features(self, images):
+    def _extract_global_features(self, images):
+        """Extract global image features using BiomedCLIP"""
+        # Process images to tensors
+        if not isinstance(images[0], torch.Tensor):
+            processed_images = torch.stack([self.preprocess(img) for img in images]).to(Config.device)
+        else:
+            processed_images = torch.stack([self.preprocess(Image.fromarray(img.permute(1, 2, 0).cpu().numpy())) 
+                                         for img in images]).to(Config.device)
+            
         with torch.no_grad():
-            inputs = self.processor(images=images, return_tensors="pt")
-            inputs = {k: v.to(Config.device) for k, v in inputs.items()}
-            # Extract visual features (patch embeddings)
-            features = self.vision_model.vision_model(**inputs).last_hidden_state  # [B, num_patches, hidden_dim]
-        return features
+            features = self.vision_model.encode_image(processed_images)  # [B, hidden_dim]
+        return features  # Global features
+
+    def _extract_patch_features(self, images):
+        """Extract patch-level features using convolutional layers"""
+        # Process images to tensors if needed
+        if not isinstance(images[0], torch.Tensor):
+            batch_imgs = torch.stack([torch.from_numpy(np.array(img)).permute(2, 0, 1) for img in images]).float().to(Config.device)
+        else:
+            batch_imgs = images
+
+        # Extract patch features
+        features = self.feature_extractor(batch_imgs)  # [B, 64, H/2, W/2]
+        features = self.feature_proj(features)  # [B, vision_hidden_size, H/8, W/8]
+        
+        # Reshape to sequence of patches
+        B, C, H, W = features.shape
+        patch_features = features.permute(0, 2, 3, 1).reshape(B, H*W, C)  # [B, H*W, vision_hidden_size]
+        
+        return patch_features
 
     def _attention_pooling(self, x):
+        """Apply attention pooling to sequence of features"""
         B = x.size(0)
         query = self.query.expand(B, -1, -1).to(x.device)
+        x = x.to(x.device)
         attn_output, _ = self.attn_pool(query, x, x)
-        return attn_output.squeeze(1)
+        return attn_output.squeeze(1)  # [B, vision_hidden_size]
 
     def forward(self, front, lateral):
-        # Extract patch features from both views
-        front_feats = self._extract_features(front)  # [B, num_patches, hidden_dim]
-        lateral_feats = self._extract_features(lateral)  # [B, num_patches, hidden_dim]
+        # Extract global features
+        front_global = self._extract_global_features(front)  # [B, hidden_dim]
+        lateral_global = self._extract_global_features(lateral)  # [B, hidden_dim]
         
-        # Project features
-        front_proj = self.proj_head(front_feats)  # [B, num_patches, vision_hidden_size]
-        lateral_proj = self.proj_head(lateral_feats)  # [B, num_patches, vision_hidden_size]
+        # Project global features
+        front_global_proj = self.proj_head(front_global)  # [B, vision_hidden_size]
+        lateral_global_proj = self.proj_head(lateral_global)  # [B, vision_hidden_size]
+        
+        # Extract patch features
+        front_patches = self._extract_patch_features(front)  # [B, N_patches, vision_hidden_size]
+        lateral_patches = self._extract_patch_features(lateral)  # [B, N_patches, vision_hidden_size]
         
         # Detect abnormality regions
-        front_attn_map = self.abnormality_detector(front_proj)  # [B, num_patches, 1]
-        lateral_attn_map = self.abnormality_detector(lateral_proj)  # [B, num_patches, 1]
+        front_attn_map = self.abnormality_detector(front_patches)  # [B, N_patches, 1]
+        lateral_attn_map = self.abnormality_detector(lateral_patches)  # [B, N_patches, 1]
         
         # Apply abnormality attention to features
-        front_focused = front_proj * (1 + front_attn_map)
-        lateral_focused = lateral_proj * (1 + lateral_attn_map)
+        front_focused = front_patches * (1 + front_attn_map)  # Enhance abnormal regions
+        lateral_focused = lateral_patches * (1 + lateral_attn_map)  # Enhance abnormal regions
         
         # Concatenate both views for cross-view fusion
-        combined = torch.cat([front_focused, lateral_focused], dim=1)  # [B, 2*num_patches, vision_hidden_size]
+        global_feats = torch.stack([front_global_proj, lateral_global_proj], dim=1)  # [B, 2, vision_hidden_size]
+        patch_feats = torch.cat([front_focused, lateral_focused], dim=1)  # [B, N_patches*2, vision_hidden_size]
+        
+        # Combined features for fusion
+        combined = torch.cat([global_feats, patch_feats], dim=1)  # [B, 2+N_patches*2, vision_hidden_size]
         
         # Cross-view fusion through transformer layers
-        fused = self.cross_fusion(combined)  # [B, 2*num_patches, vision_hidden_size]
+        fused = self.cross_fusion(combined)  # [B, 2+N_patches*2, vision_hidden_size]
         
         # Global feature extraction via attention pooling
         global_feature = self._attention_pooling(fused)  # [B, vision_hidden_size]
         
-        # Keep local features for region-specific processing
         # Select top-k abnormal regions based on attention maps
-        k = 5  # Number of regions to focus on
+        k = min(5, front_attn_map.size(1) // 4)  # Number of regions to focus on
         front_scores, front_indices = torch.topk(front_attn_map.squeeze(-1), k=k, dim=1)  # [B, k]
         lateral_scores, lateral_indices = torch.topk(lateral_attn_map.squeeze(-1), k=k, dim=1)  # [B, k]
         
         # Gather top-k abnormal regions
-        B = front_proj.size(0)
+        B = front_patches.size(0)
         local_features = []
         
         for b in range(B):
-            # Get features for front view abnormal regions
+            # Front view abnormal regions
             for idx in front_indices[b]:
-                local_features.append(front_proj[b, idx].unsqueeze(0))  # [1, vision_hidden_size]
+                local_features.append(front_patches[b, idx].unsqueeze(0))  # [1, vision_hidden_size]
             
-            # Get features for lateral view abnormal regions
+            # Lateral view abnormal regions
             for idx in lateral_indices[b]:
-                local_features.append(lateral_proj[b, idx].unsqueeze(0))  # [1, vision_hidden_size]
+                local_features.append(lateral_patches[b, idx].unsqueeze(0))  # [1, vision_hidden_size]
         
-        # Stack local features [B, 2*k, vision_hidden_size]
-        local_features = torch.cat(local_features, dim=0).reshape(B, 2*k, -1)
+        # Stack local features
+        if local_features:
+            local_features = torch.cat(local_features, dim=0)
+            local_features = local_features.reshape(B, 2*k, -1)  # [B, 2*k, vision_hidden_size]
+        else:
+            # Fallback if no local features (shouldn't happen with proper data)
+            local_features = torch.zeros(B, 2*k, global_feature.size(-1)).to(global_feature.device)
         
         return global_feature, local_features, front_attn_map, lateral_attn_map
 
@@ -147,7 +198,7 @@ class AbnormalityDetector(nn.Module):
 class FactualConsistencyModule(nn.Module):
     def __init__(self, hidden_dim, num_findings=14):
         super().__init__()
-        # Define common findings in chest X-rays (like those in CheXpert dataset)
+        # Common findings in chest X-rays (based on CheXpert dataset)
         self.num_findings = num_findings
         self.finding_classifier = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim),
@@ -166,9 +217,7 @@ class FactualConsistencyModule(nn.Module):
         
         # Generate finding-specific embeddings using probabilities as weights
         B = visual_features.size(0)
-        # [B, num_findings, 1] * [1, num_findings, hidden_dim] -> [B, num_findings, hidden_dim]
         weighted_findings = finding_probs.unsqueeze(-1) * self.finding_embeddings.unsqueeze(0)
-        # Sum across findings dimension to get combined finding embedding
         finding_context = weighted_findings.sum(dim=1)  # [B, hidden_dim]
         
         return finding_probs, finding_context
@@ -268,16 +317,16 @@ class EnhancedBioBARTDecoder(nn.Module):
         coverage = torch.zeros(B, L, 1).to(Config.device)
         
         # Create attention mask
-        attn_mask = inputs.attention_mask.bool()
-        num_heads = self.model.config.decoder_attention_heads
+        attn_mask = inputs.attention_mask
         
         # Process through decoder layers with additional cross-modal attention
         for i, layer in enumerate(self.model.model.decoder.layers):
-            # Self-attention
-            text_embeds = layer(
-                text_embeds,
+            # Self-attention within text
+            layer_outputs = layer(
+                hidden_states=text_embeds,
                 attention_mask=attn_mask
-            )[0]
+            )
+            text_embeds = layer_outputs[0]
             
             # Cross-modal attention with visual context
             if i < len(self.cross_attn_layers):
@@ -324,13 +373,6 @@ class EnhancedBioBARTDecoder(nn.Module):
         # Project features to embedding space
         vis_ctx = self.vis_proj(vis_features).unsqueeze(1)  # [B, 1, d_model]
         
-        # Optional: Use finding probabilities to guide generation via forced_decoder_ids
-        forced_decoder_ids = None
-        if finding_probs is not None:
-            # This would require additional implementation to convert finding_probs
-            # to forced decoder ids based on your specific tokenizer/vocabulary
-            pass
-        
         # Generate report
         gen_ids = self.model.generate(
             inputs_embeds=vis_ctx,
@@ -339,14 +381,13 @@ class EnhancedBioBARTDecoder(nn.Module):
             length_penalty=1.0,
             no_repeat_ngram_size=3,
             pad_token_id=self.tokenizer.pad_token_id,
-            eos_token_id=self.tokenizer.eos_token_id,
-            forced_decoder_ids=forced_decoder_ids
+            eos_token_id=self.tokenizer.eos_token_id
         )
         
         return self.tokenizer.batch_decode(gen_ids, skip_special_tokens=True)
 
 
-class XrayReportModel(nn.Module):
+class EnhancedXrayReportModel(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
@@ -383,7 +424,7 @@ class XrayReportModel(nn.Module):
             'lateral_attn_map': lateral_attn_map
         }
         
-        # Auxiliary finding classification loss if labels provided
+        # If finding labels are provided, compute auxiliary classification loss
         if finding_labels is not None:
             finding_loss = F.binary_cross_entropy_with_logits(
                 self.findings_classifier(fused_visual),

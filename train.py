@@ -48,8 +48,6 @@ test_loader = DataLoader(test_dataset, batch_size=Config.batch_size,
 
 if not os.path.exists(Config.output_dir):
     os.makedirs(Config.output_dir)
-if not os.path.exists(Config.best_model_path):
-    os.makedirs(Config.best_model_path)
 
 # Model
 model = XrayReportModel(Config).to(Config.device)
