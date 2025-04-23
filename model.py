@@ -183,7 +183,7 @@ class CLIPVisionEncoder(nn.Module):
         front_inputs = self.clip_processor(images=front, return_tensors="pt")
         front_inputs = {k: v.to(Config.device) for k, v in front_inputs.items()}
         lateral_inputs = self.clip_processor(images=lateral, return_tensors="pt")
-        lateral_inputs = {k: v.to(lateral.Config.device) for k, v in lateral_inputs.items()}
+        lateral_inputs = {k: v.to(Config.device) for k, v in lateral_inputs.items()}
 
         front_feats = self.clip_model.get_image_features(**front_inputs)  # (B, projection_dim)
         lateral_feats = self.clip_model.get_image_features(**lateral_inputs)
