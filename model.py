@@ -234,6 +234,7 @@ class EnhancedCLIPVisionEncoder(nn.Module):
     def _attention_pooling(self, x):
         B = x.size(0)
         query = self.query.expand(B, -1, -1)  # [B, 1, D]
+        query = query.to(x.device)  # Move to the same device as x
         attn_output, _ = nn.MultiheadAttention(
             embed_dim=x.size(-1),
             num_heads=8,
