@@ -221,6 +221,12 @@ class EnhancedCLIPVisionEncoder(nn.Module):
             num_layers=2
         )
 
+        self.attn_pool = nn.MultiheadAttention(
+            embed_dim=config.vision_hidden_size,
+            num_heads=8,
+            batch_first=True
+        )
+        
         # Attention pooling query
         self.query = nn.Parameter(torch.randn(1, 1, config.vision_hidden_size))
 
@@ -233,14 +239,10 @@ class EnhancedCLIPVisionEncoder(nn.Module):
 
     def _attention_pooling(self, x):
         B = x.size(0)
-        query = self.query.expand(B, -1, -1)  # [B, 1, D]
-        query = query.to(x.device)  # Move to the same device as x
-        attn_output, _ = nn.MultiheadAttention(
-            embed_dim=x.size(-1),
-            num_heads=8,
-            batch_first=True
-        )(query, x, x)
-        return attn_output.squeeze(1)  # [B, D]
+        query = self.query.expand(B, -1, -1).to(x.device)
+        x = x.to(x.device)
+        attn_output, _ = self.attn_pool(query, x, x)
+        return attn_output.squeeze(1)
 
     def forward(self, front, lateral):
         # Extract features
