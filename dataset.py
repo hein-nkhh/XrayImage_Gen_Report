@@ -45,14 +45,10 @@ class XrayReportDataset(Dataset):
     def get_transform_front():
         return transforms.Compose([
             transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
         ])
 
     @staticmethod
     def get_transform_lateral():
         return transforms.Compose([
             transforms.Resize((224, 224)),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.498, 0.462, 0.413], std=[0.234, 0.229, 0.221])
         ])
