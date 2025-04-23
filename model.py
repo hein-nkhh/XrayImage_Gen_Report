@@ -325,7 +325,7 @@ class EnhancedBioBARTDecoder(nn.Module):
                 coverage += attn_weights.mean(dim=1).unsqueeze(-1)
         
         # Calculate coverage loss
-        cov_loss = self.coverage_loss(
+        cov_loss = self.coverage_loss_fn(
             F.conv2d(coverage.permute(0,2,1).unsqueeze(1), self.coverage_weights),
             torch.ones_like(coverage)
         )
