@@ -257,8 +257,8 @@ class XrayReportModel(nn.Module):
         vis_ctx = self.vision_proj(fuse)                # (B,d_model)
 
         tok = self.biobart.encode_reports(reports, max_length=self.config.max_len)
-        labels = tok['input_ids'].to(front.device)
-        decoder_mask = (labels != self.biobart.tokenizer.pad_token_id).long().to(front.device)
+        labels = tok['input_ids'].to(Config.device)
+        decoder_mask = (labels != self.biobart.tokenizer.pad_token_id).long().to(Config.device)
 
         B, L = labels.size()
         dec_inputs = vis_ctx.unsqueeze(1).expand(-1, L, -1)  # (B,L,d_model)
