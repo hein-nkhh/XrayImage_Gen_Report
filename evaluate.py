@@ -53,7 +53,7 @@ def evaluate_all(preds, refs):
     }
     return results
 
-def evaluate_model(model, dataloader, device, num_examples=2, test = False):
+def evaluate_model(model, dataloader, num_examples=5, test = False):
     model.eval()
     predictions = []
     references = []
@@ -69,10 +69,11 @@ def evaluate_model(model, dataloader, device, num_examples=2, test = False):
 
             # In ra num_examples cặp prediction và reference
             if test:
-                print("------------------------------------------------")
-                print(f"Prediction: {generated_texts[0]}")
-                print(f"Reference: {ref_texts[0]}")
-                print("-" * 50)
+                for i in range(num_examples):
+                    print("------------------------------------------------")
+                    print(f"Prediction: {generated_texts[i]}")
+                    print(f"Reference: {ref_texts[i]}")
+                    print("-" * 50)
             else:
                 None
             
