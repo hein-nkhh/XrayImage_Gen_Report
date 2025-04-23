@@ -22,8 +22,8 @@ class ProjectionHead(nn.Module):
 class CLIPVisionEncoder(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch16")
-        self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch16")
+        self.clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+        self.clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
         
         for name, param in self.clip_model.vision_model.named_parameters():
             param.requires_grad = False

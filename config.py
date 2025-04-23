@@ -23,7 +23,6 @@ class Config:
     vision_output_dim = 1024
     cross_attn_dim = 1024
     cross_attn_heads = 8
-    text_decoder_model = 'microsoft/biogpt'
     max_position_embeddings = 512
     hidden_size = 768
     vision_dim = 1024

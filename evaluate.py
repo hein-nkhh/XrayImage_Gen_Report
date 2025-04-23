@@ -53,7 +53,7 @@ def evaluate_all(preds, refs):
     }
     return results
 
-def evaluate_model(model, dataloader, num_examples=5, test = False):
+def evaluate_model(model, dataloader, num_examples=1, test = False):
     model.eval()
     predictions = []
     references = []
