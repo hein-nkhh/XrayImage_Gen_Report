@@ -65,8 +65,7 @@ def evaluate_model(model, dataloader, device, num_examples=2):
             ref_texts = batch['report']
 
             # Sinh báo cáo từ model
-            generated_ids = model.generate(front, lateral, max_length=153)
-            generated_texts = model.decode(generated_ids)
+            generated_texts = model.generate(front, lateral, max_length=153)
 
             # In ra num_examples cặp prediction và reference
             for i in range(min(num_examples, len(generated_texts))):
