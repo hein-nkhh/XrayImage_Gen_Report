@@ -387,7 +387,7 @@ class EnhancedBioBARTDecoder(nn.Module):
         return self.tokenizer.batch_decode(gen_ids, skip_special_tokens=True)
 
 
-class EnhancedXrayReportModel(nn.Module):
+class XrayReportModel(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.config = config
