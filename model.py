@@ -101,7 +101,19 @@ class BiDirectionalFusion(nn.Module):
         fused = torch.cat([t2v, v2t_expand], dim=-1)                # (B, L, 2*d_model)
         return self.ffn(fused)                                      # (B, L, d_model)
 
+# class ImageTextFusion(nn.Module):
+#     def __init__(self, embed_dim, num_heads):
+#         super().__init__()
+#         self.cross_attn = nn.MultiheadAttention(embed_dim=embed_dim,
+#                                                 num_heads=num_heads,
+#                                                 batch_first=True)
+#         self.norm = nn.LayerNorm(embed_dim)
+#         self.dropout = nn.Dropout(0.1)
 
+#     def forward(self, x, vision_feats):
+#         attn_out, _ = self.cross_attn(x, vision_feats, vision_feats)
+#         return self.norm(x + self.dropout(attn_out))
+    
 class XrayReportModel(nn.Module):
     def __init__(self, config):
         super().__init__()
