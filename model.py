@@ -148,6 +148,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import CLIPProcessor, CLIPModel
 from transformers import BartTokenizer, BartForConditionalGeneration
+from config import Config
 
 class ProjectionHead(nn.Module):
     def __init__(self, input_dim, output_dim, dropout=0.1):
@@ -179,10 +180,10 @@ class CLIPVisionEncoder(nn.Module):
 
     def forward(self, front, lateral):
         # Process images
-        front_inputs = self.clip_processor(images=front, return_tensors="pt", padding=True)
-        front_inputs = {k: v.to(front.device) for k, v in front_inputs.items()}
-        lateral_inputs = self.clip_processor(images=lateral, return_tensors="pt", padding=True)
-        lateral_inputs = {k: v.to(lateral.device) for k, v in lateral_inputs.items()}
+        front_inputs = self.clip_processor(images=front, return_tensors="pt")
+        front_inputs = {k: v.to(Config.device) for k, v in front_inputs.items()}
+        lateral_inputs = self.clip_processor(images=lateral, return_tensors="pt")
+        lateral_inputs = {k: v.to(lateral.Config.device) for k, v in lateral_inputs.items()}
 
         front_feats = self.clip_model.get_image_features(**front_inputs)  # (B, projection_dim)
         lateral_feats = self.clip_model.get_image_features(**lateral_inputs)
