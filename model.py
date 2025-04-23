@@ -258,6 +258,7 @@ class EnhancedCLIPVisionEncoder(nn.Module):
         # Attention pooling
         return self._attention_pooling(fused)  # [B, D]
 
+
 class EnhancedBioBARTDecoder(nn.Module):
     def __init__(self, config):
         super().__init__()
@@ -270,7 +271,7 @@ class EnhancedBioBARTDecoder(nn.Module):
 
         self.vis_proj = nn.Linear(config.vision_hidden_size, self.model.config.d_model)
 
-        self.cross_attn_layers = nn.ModuleList([
+        self.cross_attn_layers = nn.ModuleList([ 
             nn.MultiheadAttention(
                 embed_dim=self.model.config.d_model, 
                 num_heads=8, 
@@ -279,7 +280,6 @@ class EnhancedBioBARTDecoder(nn.Module):
         ])
 
         self.coverage_weights = nn.Conv2d(1, 1, kernel_size=(1, 64))
- 
         self.coverage_loss_fn = nn.MSELoss()
 
     def forward(self, vis_features, reports):
@@ -312,7 +312,7 @@ class EnhancedBioBARTDecoder(nn.Module):
                 text_embeds, 
                 attention_mask=attn_mask
             )[0]
-            
+
             # Cross-modal attention
             if i < len(self.cross_attn_layers):
                 attn_output, attn_weights = self.cross_attn_layers[i](
@@ -324,12 +324,18 @@ class EnhancedBioBARTDecoder(nn.Module):
                 
                 # Update coverage
                 coverage += attn_weights.mean(dim=1).unsqueeze(-1)
-        
+
         # Calculate coverage loss
         cov_out = self.coverage_weights(coverage.permute(0, 2, 1).unsqueeze(1))  # [B, 1, 1, L]
-        cov_out = cov_out.squeeze(2).permute(0, 2, 1)  # back to [B, L, 1]
-        cov_loss = self.coverage_loss_fn(cov_out, torch.ones_like(coverage))
-        
+        print("cov_out shape before squeeze:", cov_out.shape)
+        cov_out = cov_out.squeeze(2).permute(0, 2, 1)
+        print("cov_out shape after squeeze and permute:", cov_out.shape)
+
+        coverage = coverage[:, :cov_out.size(1)]
+        print("coverage shape after truncating:", coverage.shape)
+
+        cov_loss = self.coverage_loss_fn(cov_out, coverage)
+
         # Final outputs
         logits = self.model.lm_head(text_embeds)
         ce_loss = F.cross_entropy(
@@ -338,7 +344,7 @@ class EnhancedBioBARTDecoder(nn.Module):
             ignore_index=self.tokenizer.pad_token_id,
             label_smoothing=0.1
         )
-        
+
         return {
             'loss': ce_loss + 0.1 * cov_loss,
             'logits': logits
@@ -346,7 +352,7 @@ class EnhancedBioBARTDecoder(nn.Module):
 
     def generate(self, vis_features, max_length=150):
         vis_ctx = self.vis_proj(vis_features).unsqueeze(1)
-        
+
         gen_ids = self.model.generate(
             inputs_embeds=vis_ctx,
             max_length=max_length,
@@ -355,6 +361,7 @@ class EnhancedBioBARTDecoder(nn.Module):
             eos_token_id=self.tokenizer.eos_token_id
         )
         return self.tokenizer.batch_decode(gen_ids, skip_special_tokens=True)
+
 
 class XrayReportModel(nn.Module):
     def __init__(self, config):
@@ -370,4 +377,5 @@ class XrayReportModel(nn.Module):
     def generate(self, front, lateral, max_length=150):
         vis_features = self.encoder(front, lateral)
         return self.decoder.generate(vis_features, max_length=max_length)
+
 
