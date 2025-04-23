@@ -296,12 +296,14 @@ class EnhancedBioBARTDecoder(nn.Module):
         B, L = inputs.input_ids.shape
         coverage = torch.zeros(B, L, 1).to(Config.device)
 
+        attn_mask = inputs.attention_mask.bool()
+
         # Enhanced decoding with cross-modal attention
         for i, layer in enumerate(self.model.model.decoder.layers):
             # Self-attention
             text_embeds = layer(
                 text_embeds, 
-                attention_mask=inputs.attention_mask
+                attention_mask=inputs.attn_mask
             )[0]
             
             # Cross-modal attention
