@@ -48,7 +48,8 @@ def main():
     print("🧠 Initializing models...")
     generator = ReportGenerator()
     d_model = generator.model.config.d_model
-    mlp = MLP(output_dim=d_model).to(DEVICE)
+    input_dim = X_train.shape[1]  # Kích thước đầu vào của MLP
+    mlp = MLP(input_dim=input_dim, output_dim=d_model).to(DEVICE)
 
     # --- 6. Train mô hình ---
     print("🚀 Starting training loop...")

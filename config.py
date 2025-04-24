@@ -10,7 +10,7 @@ CHECKPOINT_PATH = f"{CHECKPOINT_DIR}/best_model.pt"
 
 
 # Model config
-MLP_INPUT_DIM = 2048
+
 MLP_HIDDEN_DIM = 1024
 MAX_SEQ_LEN = 150
 BIOBART_MODEL_NAME = "GanjinZero/biobart-base"
