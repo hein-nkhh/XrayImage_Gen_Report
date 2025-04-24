@@ -11,11 +11,17 @@ from train.evaluator import evaluate_model
 import os
 
 def ensure_checkpoint_dir():
-    if not os.path.exists(CHECKPOINT_DIR):
+    print(f"🧪 Checking if checkpoint directory exists: {CHECKPOINT_DIR}", flush=True)
+
+    if os.path.exists(CHECKPOINT_DIR):
+        if os.path.isdir(CHECKPOINT_DIR):
+            print(f"✅ Directory already exists: {CHECKPOINT_DIR}", flush=True)
+        else:
+            print(f"⚠️ Path exists but is not a directory! Please check: {CHECKPOINT_DIR}", flush=True)
+    else:
         os.makedirs(CHECKPOINT_DIR)
         print(f"📂 Created checkpoint directory: {CHECKPOINT_DIR}", flush=True)
-    else:
-        print(f"✅ Checkpoint directory exists: {CHECKPOINT_DIR}", flush=True)
+
     
 def main():
     ensure_checkpoint_dir()
