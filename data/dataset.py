@@ -10,7 +10,7 @@ from config import DEVICE, IMAGE_DIR
 # Load Swin Transformer và extractor
 swin_model = SwinModel.from_pretrained('microsoft/swin-base-patch4-window7-224').to(DEVICE)
 swin_model.eval()
-feature_extractor = AutoImageProcessor.from_pretrained('microsoft/swin-base-patch4-window7-224')
+feature_extractor = AutoImageProcessor.from_pretrained('microsoft/swin-base-patch4-window7-224', use_fast=True)
 
 def load_image(img_name, base_path=IMAGE_DIR):
     path = os.path.join(base_path, os.path.basename(img_name.strip()))
