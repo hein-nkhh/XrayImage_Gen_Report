@@ -76,6 +76,10 @@ def train_model(mlp, generator, train_loader, val_loader):
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
             patience_counter = 0
+            
+            if os.path.exists(CHECKPOINT_PATH):
+                os.remove(CHECKPOINT_PATH)
+                
             torch.save({
                 'mlp': mlp.state_dict(),
                 'biobart': generator.model.state_dict()
