@@ -1,0 +1,10 @@
+mlp_input_dim: 2048
+mlp_hidden_dim: 1024
+mlp_output_dim: 1024
+biobart_model_name: "GanjinZero/biobart-base"
+batch_size: 16
+lr_mlp: 1e-4
+lr_bart: 5e-5
+epochs: 10
+X_train: []  # Placeholder, load your real data
+y_train: []  # Placeholder, load your real data
