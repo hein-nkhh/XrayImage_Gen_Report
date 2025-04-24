@@ -1,7 +1,7 @@
 import pandas as pd
 import torch
 
-from config import DEVICE, CHECKPOINT_PATH, CHECKPOINT_DIR
+from config import DEVICE, CHECKPOINT_PATH, CHECKPOINT_DIR, IMAGE_DIR
 from data.dataset import extract_features_for_datasets, clean_text
 from data.dataloader import get_dataloaders
 from models.mlp import MLP
@@ -38,7 +38,7 @@ def main():
 
     # --- 3. Trích xuất đặc trưng ảnh ---
     print("🔍 Extracting image features...")
-    X_train, X_val, X_test = extract_features_for_datasets(train_df, val_df, test_df)
+    X_train, X_val, X_test = extract_features_for_datasets(train_df, val_df, test_df, IMAGE_DIR)
 
     # --- 4. Chuẩn bị DataLoader ---
     print("📦 Tokenizing and preparing DataLoaders...")
@@ -60,7 +60,7 @@ def main():
 
     if os.path.exists(CHECKPOINT_PATH):
         print(f"✅ Loading best checkpoint from {CHECKPOINT_PATH}...")
-        state_dict = torch.load(CHECKPOINT_PATH, map_location=DEVICE)
+        state_dict = torch.load(CHECKPOINT_PATH, map_location=DEVICE, weights_only=True)
         mlp.load_state_dict(state_dict['mlp'])
         generator.model.load_state_dict(state_dict['biobart'])
 
