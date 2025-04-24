@@ -26,7 +26,8 @@ def extract_img_feature(image1_path, image2_path):
     def extract_single(image_path):
         image = load_image(image_path)
         if image is None: return None
-        inputs = feature_extractor(images=image, return_tensors="pt").to(DEVICE)
+        inputs = feature_extractor(images=image, return_tensors="pt")
+        inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
         with torch.no_grad():
             output = swin_model(**inputs).last_hidden_state[:, 0, :]
         return output.squeeze(0).cpu().numpy()
