@@ -27,9 +27,9 @@ def main():
     ensure_checkpoint_dir()
     
     # --- 1. Load dữ liệu CSV ---
-    train_df = pd.read_csv("/kaggle/input/data-split-csv/train.csv")
-    val_df = pd.read_csv("/kaggle/input/data-split-csv/val.csv")
-    test_df = pd.read_csv("/kaggle/input/data-split-csv/test.csv")
+    train_df = pd.read_csv("/kaggle/input/data-split-csv/Train_Data.csv")
+    val_df = pd.read_csv("/kaggle/input/data-split-csv/CV_Data.csv")
+    test_df = pd.read_csv("/kaggle/input/data-split-csv/Test_Data.csv")
 
     # --- 2. Làm sạch văn bản ---
     y_train = [clean_text(r) for r in train_df["Report"]]
