@@ -67,7 +67,8 @@ def main():
 
     # --- 8. Evaluate ---
     print("📊 Evaluating on test set...")
-    evaluate_model(mlp, generator, test_loader)
+    evaluate_model(mlp, generator, test_loader, generator.tokenizer, DEVICE)
+
 
 if __name__ == "__main__":
     main()
