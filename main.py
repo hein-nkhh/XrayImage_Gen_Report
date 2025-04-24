@@ -42,7 +42,7 @@ def main():
     print(f"✅ Extracted features: {X_train.shape}, {X_val.shape}, {X_test.shape}")
     # --- 4. Chuẩn bị DataLoader ---
     print("📦 Tokenizing and preparing DataLoaders...")
-    train_loader, val_loader, test_loader = get_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test)
+    train_loader, val_loader, test_loader = get_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test, input_dim=X_train.shape[1])
 
     # --- 5. Khởi tạo mô hình ---
     print("🧠 Initializing models...")

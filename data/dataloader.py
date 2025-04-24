@@ -11,8 +11,8 @@ def normalize_features(arr):
     std = std if std > 1e-6 else 1.0
     return (arr - mean) / std
 
-def to_tensor(arr):
-    return torch.tensor(arr.copy()).float() if isinstance(arr, np.ndarray) else torch.empty((0, MLP_INPUT_DIM))
+def to_tensor(arr, input_dim):
+    return torch.tensor(arr.copy()).float() if isinstance(arr, np.ndarray) else torch.empty((0, input_dim))
 
 def tokenize_reports(texts):
     return biobart_tokenizer(
@@ -24,9 +24,11 @@ def tokenize_reports(texts):
         return_tensors='pt'
     )["input_ids"]
 
-def get_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test):
+def get_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test, input_dim):
     X_train, X_val, X_test = map(normalize_features, [X_train, X_val, X_test])
-    X_train_tensor, X_val_tensor, X_test_tensor = map(to_tensor, [X_train, X_val, X_test])
+    X_train_tensor = to_tensor(X_train, input_dim)
+    X_val_tensor = to_tensor(X_val, input_dim)
+    X_test_tensor = to_tensor(X_test, input_dim)
 
     y_train_tensor = tokenize_reports(y_train)
     y_val_tensor = tokenize_reports(y_val)
