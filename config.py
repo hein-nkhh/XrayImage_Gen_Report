@@ -17,7 +17,7 @@ BIOBART_MODEL_NAME = "GanjinZero/biobart-base"
 
 # Training config
 BATCH_SIZE = 16
-EPOCHS = 2
+EPOCHS = 20
 LR_MLP = 1e-4
 LR_BART = 5e-5
 PATIENCE = 8
