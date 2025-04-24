@@ -2,6 +2,7 @@ from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 from nltk.translate.meteor_score import meteor_score
 from nltk.tokenize import word_tokenize
 import numpy as np
+import nltk
 nltk.download('punkt')
 nltk.download('wordnet')
 
