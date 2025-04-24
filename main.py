@@ -39,7 +39,7 @@ def main():
     # --- 3. Trích xuất đặc trưng ảnh ---
     print("🔍 Extracting image features...")
     X_train, X_val, X_test = extract_features_for_datasets(train_df, val_df, test_df)
-
+    print(f"✅ Extracted features: {X_train.shape}, {X_val.shape}, {X_test.shape}")
     # --- 4. Chuẩn bị DataLoader ---
     print("📦 Tokenizing and preparing DataLoaders...")
     train_loader, val_loader, test_loader = get_dataloaders(X_train, y_train, X_val, y_val, X_test, y_test)
