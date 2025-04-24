@@ -4,12 +4,12 @@ from models.mlp import MLP
 from models.biobart_wrapper import BioBARTWrapper
 import sys
 sys.path.append('./preprocessing')
-from preprocessing.dataset_builder import normalize_features, to_tensor, build_dataset
-from preprocessing.report_cleaning import clean_text
+from .preprocessing.dataset_builder import normalize_features, to_tensor, build_dataset
+from .preprocessing.report_cleaning import clean_text
 sys.path.append('./training')
-from training.train import train_step
-from training.validate import validate
-from training.evaluate import generate_and_decode
+from .training.train import train_step
+from .training.validate import validate
+from .training.evaluate import generate_and_decode
 from utils.metrics_helper import calculate_bleu, calculate_meteor, calculate_rouge_scores
 from torch.utils.data import DataLoader
 from tqdm import tqdm
