@@ -2,7 +2,7 @@ import torch
 from transformers import SwinModel, AutoImageProcessor
 from config import DEVICE
 
-class SwinFeatureExtractor:
+class FeatureExtractor:
     def __init__(self):
         self.model = SwinModel.from_pretrained('microsoft/swin-base-patch4-window7-224').to(DEVICE)
         self.model.eval()

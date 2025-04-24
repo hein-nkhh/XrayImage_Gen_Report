@@ -6,7 +6,7 @@ import cv2
 import torch
 from transformers import SwinModel, AutoImageProcessor
 from config import DEVICE, IMAGE_DIR
-from models.feature_extractor import SwinFeatureExtractor
+from models.feature_extractor import FeatureExtractor
 
 def load_image(img_name, base_path=IMAGE_DIR):
     path = os.path.join(base_path, os.path.basename(img_name.strip()))
@@ -19,7 +19,7 @@ def load_image(img_name, base_path=IMAGE_DIR):
         return None
 
 def extract_img_feature(image1_path, image2_path):
-    feature_extractor = SwinFeatureExtractor()
+    feature_extractor = FeatureExtractor()
     
     def extract_single(image_path):
         image = load_image(image_path)
