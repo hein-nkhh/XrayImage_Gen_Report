@@ -4,13 +4,8 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from tqdm import tqdm
 import os
-from config import LR_MLP, LR_BART, CHECKPOINT_PATH, EPOCHS, PATIENCE, DEVICE
+from config import LR_MLP, LR_BART, CHECKPOINT_DIR, CHECKPOINT_PATH, EPOCHS, PATIENCE, DEVICE
 
-if not os.path.exists(CHECKPOINT_PATH):
-    os.makedirs(CHECKPOINT_PATH)
-    print(f"Created directory: {CHECKPOINT_PATH}")
-else:
-    print(f"Directory already exists: {CHECKPOINT_PATH}")
     
 def train_step(mlp, generator, batch, optimizer, tokenizer):
     mlp.train()
@@ -77,7 +72,9 @@ def train_model(mlp, generator, train_loader, val_loader):
             best_val_loss = avg_val_loss
             patience_counter = 0
             
-            if os.path.exists(CHECKPOINT_PATH):
+            os.makedirs(os.path.dirname(CHECKPOINT_PATH), exist_ok=True)
+            
+            if os.path.exists(CHECKPOINT_PATH) and os.path.isfile(CHECKPOINT_PATH):
                 os.remove(CHECKPOINT_PATH)
                 
             torch.save({

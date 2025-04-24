@@ -6,11 +6,7 @@ import cv2
 import torch
 from transformers import SwinModel, AutoImageProcessor
 from config import DEVICE, IMAGE_DIR
-
-# Load Swin Transformer và extractor
-swin_model = SwinModel.from_pretrained('microsoft/swin-base-patch4-window7-224').to(DEVICE)
-swin_model.eval()
-feature_extractor = AutoImageProcessor.from_pretrained('microsoft/swin-base-patch4-window7-224', use_fast=True)
+from models.feature_extractor import SwinFeatureExtractor
 
 def load_image(img_name, base_path=IMAGE_DIR):
     path = os.path.join(base_path, os.path.basename(img_name.strip()))
@@ -23,14 +19,12 @@ def load_image(img_name, base_path=IMAGE_DIR):
         return None
 
 def extract_img_feature(image1_path, image2_path):
+    feature_extractor = SwinFeatureExtractor()
+    
     def extract_single(image_path):
         image = load_image(image_path)
         if image is None: return None
-        inputs = feature_extractor(images=image, return_tensors="pt")
-        inputs = {k: v.to(DEVICE) for k, v in inputs.items()}
-        with torch.no_grad():
-            output = swin_model(**inputs).last_hidden_state[:, 0, :]
-        return output.squeeze(0).cpu().numpy()
+        return feature_extractor.extract(image)
     
     f1 = extract_single(image1_path)
     f2 = extract_single(image2_path)

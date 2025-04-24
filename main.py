@@ -1,7 +1,7 @@
 import pandas as pd
 import torch
 
-from config import DEVICE, CHECKPOINT_PATH
+from config import DEVICE, CHECKPOINT_PATH, CHECKPOINT_DIR
 from data.dataset import extract_features_for_datasets, clean_text
 from data.dataloader import get_dataloaders
 from models.mlp import MLP
@@ -10,6 +10,12 @@ from train.trainer import train_model
 from train.evaluator import evaluate_model
 import os
 
+if not os.path.exists(CHECKPOINT_DIR):
+    os.makedirs(CHECKPOINT_DIR)
+    print(f"Created directory: {CHECKPOINT_DIR}")
+else:
+    print(f"Directory already exists: {CHECKPOINT_DIR}")
+    
 def main():
     # --- 1. Load dữ liệu CSV ---
     train_df = pd.read_csv("/kaggle/input/data-split-csv/train.csv")
