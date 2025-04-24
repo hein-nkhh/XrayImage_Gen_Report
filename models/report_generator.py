@@ -29,3 +29,4 @@ class ReportGenerator:
             decoder_attention_mask=attention_mask,
         )
         return output.loss
+    
