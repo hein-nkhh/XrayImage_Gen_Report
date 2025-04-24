@@ -28,7 +28,6 @@ def extract_features_batchwise(df, image_dir, batch_size=32):
     for img1_batch, img2_batch in tqdm(loader, desc="🔍 Extracting image features (batchwise)"):
         batch_feats = []
         for img1, img2 in zip(img1_batch, img2_batch):
-            # Convert tensor [C, H, W] → numpy [H, W, C] → uint8
             img1_np = (img1.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
             img2_np = (img2.permute(1, 2, 0).cpu().numpy() * 255).astype(np.uint8)
 
@@ -37,7 +36,8 @@ def extract_features_batchwise(df, image_dir, batch_size=32):
             combined = np.concatenate([f1, f2], axis=-1)
             batch_feats.append(combined)
 
-        features.append(torch.tensor(batch_feats))
+        batch_array = np.array(batch_feats)  # ✅ fix performance warning
+        features.append(torch.from_numpy(batch_array))
 
     return torch.cat(features, dim=0).numpy()
 
