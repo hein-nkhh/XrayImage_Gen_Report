@@ -4,8 +4,8 @@ import torch
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # Paths
-IMAGE_DIR = "/kaggle/working/xray_images"
-CHECKPOINT_PATH = "vit_biobart_best_model.pt"
+IMAGE_DIR = "/kaggle/input/image-features-attention/xray_images"
+CHECKPOINT_PATH = "/kaggle/working/vit_biobart_best_model.pt"
 
 # Model config
 MLP_INPUT_DIM = 2048

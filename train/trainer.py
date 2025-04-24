@@ -6,6 +6,12 @@ from tqdm import tqdm
 import os
 from config import LR_MLP, LR_BART, CHECKPOINT_PATH, EPOCHS, PATIENCE, DEVICE
 
+if not os.path.exists(CHECKPOINT_PATH):
+    os.makedirs(CHECKPOINT_PATH)
+    print(f"Created directory: {CHECKPOINT_PATH}")
+else:
+    print(f"Directory already exists: {CHECKPOINT_PATH}")
+    
 def train_step(mlp, generator, batch, optimizer, tokenizer):
     mlp.train()
     generator.model.train()
