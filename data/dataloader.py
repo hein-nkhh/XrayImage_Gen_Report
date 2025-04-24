@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader, TensorDataset
 from transformers import AutoTokenizer
-from config import MLP_INPUT_DIM, MAX_SEQ_LEN, BATCH_SIZE, BIOBART_MODEL_NAME
+from config import MAX_SEQ_LEN, BATCH_SIZE, BIOBART_MODEL_NAME
 
 biobart_tokenizer = AutoTokenizer.from_pretrained(BIOBART_MODEL_NAME)
 
