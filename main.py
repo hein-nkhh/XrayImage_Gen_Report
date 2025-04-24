@@ -2,8 +2,11 @@ import os
 import torch
 from models.mlp import MLP
 from models.biobart_wrapper import BioBARTWrapper
+import sys
+sys.path.append('./preprocessing')
 from preprocessing.dataset_builder import normalize_features, to_tensor, build_dataset
 from preprocessing.report_cleaning import clean_text
+sys.path.append('./training')
 from training.train import train_step
 from training.validate import validate
 from training.evaluate import generate_and_decode
