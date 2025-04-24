@@ -1,15 +1,16 @@
 import torch
 import torch.nn as nn
+from config import MLP_INPUT_DIM, MLP_HIDDEN_DIM
 
 class MLP(nn.Module):
-    def __init__(self, input_dim, hidden_dim, output_dim):
+    def __init__(self, output_dim):
         super(MLP, self).__init__()
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.fc1 = nn.Linear(MLP_INPUT_DIM, MLP_HIDDEN_DIM)
         self.dropout1 = nn.Dropout(0.1)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
+        self.fc2 = nn.Linear(MLP_HIDDEN_DIM, MLP_HIDDEN_DIM)
         self.dropout2 = nn.Dropout(0.1)
-        self.fc3 = nn.Linear(hidden_dim, output_dim)
-        self.layer_norm = nn.LayerNorm(output_dim)
+        self.fc3 = nn.Linear(MLP_HIDDEN_DIM, output_dim)
+        self.norm = nn.LayerNorm(output_dim)
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))
@@ -17,4 +18,4 @@ class MLP(nn.Module):
         x = torch.relu(self.fc2(x))
         x = self.dropout2(x)
         x = self.fc3(x)
-        return self.layer_norm(x)
+        return self.norm(x)
