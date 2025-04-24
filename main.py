@@ -10,14 +10,15 @@ from train.trainer import train_model
 from train.evaluator import evaluate_model
 import os
 
-
-    
-def main():
+def ensure_checkpoint_dir():
     if not os.path.exists(CHECKPOINT_DIR):
         os.makedirs(CHECKPOINT_DIR)
-        print(f"Created directory: {CHECKPOINT_DIR}")
+        print(f"📂 Created checkpoint directory: {CHECKPOINT_DIR}", flush=True)
     else:
-        print(f"Directory already exists: {CHECKPOINT_DIR}")
+        print(f"✅ Checkpoint directory exists: {CHECKPOINT_DIR}", flush=True)
+    
+def main():
+    ensure_checkpoint_dir()
     
     # --- 1. Load dữ liệu CSV ---
     train_df = pd.read_csv("/kaggle/input/data-split-csv/train.csv")
